@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{SITE_NAME}} - Nyhedsbrev</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .newsletter-container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #0073aa;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #0073aa;
+            margin: 0;
+            font-size: 28px;
+        }
+        .section {
+            margin-bottom: 40px;
+        }
+        .section-title {
+            color: #0073aa;
+            font-size: 22px;
+            border-bottom: 2px solid #e1e1e1;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .item {
+            margin-bottom: 25px;
+            padding: 20px;
+            border: 1px solid #e1e1e1;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .item-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .item-title a {
+            color: #0073aa;
+            text-decoration: none;
+        }
+        .item-title a:hover {
+            text-decoration: underline;
+        }
+        .item-meta {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .item-excerpt {
+            line-height: 1.5;
+        }
+        .event-date {
+            background-color: #0073aa;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #e1e1e1;
+            color: #666;
+            font-size: 14px;
+        }
+        .read-more {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: #0073aa;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .read-more:hover {
+            background-color: #005a87;
+        }
+    </style>
+</head>
+<body>
+    <div class="newsletter-container">
+        <div class="header">
+            <h1>{{SITE_NAME}}</h1>
+            <p>Nyhedsbrev - {{CURRENT_MONTH_YEAR}}</p>
+        </div>
+        
+        {{POSTS_SECTION}}
+        
+        {{EVENTS_SECTION}}
+        
+        <div class="footer">
+            <p>Dette nyhedsbrev er sendt fra <strong>{{SITE_NAME}}</strong></p>
+            <p>Besøg vores hjemmeside: <a href="{{SITE_URL}}">{{SITE_URL}}</a></p>
+        </div>
+    </div>
+</body>
+</html>

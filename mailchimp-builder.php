@@ -1,0 +1,159 @@
+<?php
+/**
+ * Plugin Name: Mailchimp Builder
+ * Description: Build newsletter based on posts and events with Mailchimp API and a predesigned newsletter.
+ * Version: 1.0.0
+ * Author: Din Navn
+ * Text Domain: mailchimp-builder
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit; // Exit if accessed directly
+}
+
+// Define plugin constants
+define( 'MAILCHIMP_BUILDER_VERSION', '1.0.0' );
+define( 'MAILCHIMP_BUILDER_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'MAILCHIMP_BUILDER_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+
+/**
+ * Main Mailchimp Builder Class
+ */
+class Mailchimp_Builder {
+    
+    private static $instance = null;
+    
+    public static function get_instance() {
+        if ( null === self::$instance ) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+    
+    private function __construct() {
+        add_action( 'init', array( $this, 'init' ) );
+        add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
+        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
+        add_action( 'wp_ajax_mailchimp_generate_newsletter', array( $this, 'ajax_generate_newsletter' ) );
+        add_action( 'wp_ajax_mailchimp_send_campaign', array( $this, 'ajax_send_campaign' ) );
+        
+        // Register activation hook
+        register_activation_hook( __FILE__, array( $this, 'activate' ) );
+    }
+    
+    public function init() {
+        load_plugin_textdomain( 'mailchimp-builder', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+        
+        // Include necessary files
+        $this->include_files();
+    }
+    
+    private function include_files() {
+        require_once MAILCHIMP_BUILDER_PLUGIN_DIR . 'includes/class-mailchimp-api.php';
+        require_once MAILCHIMP_BUILDER_PLUGIN_DIR . 'includes/class-newsletter-generator.php';
+        require_once MAILCHIMP_BUILDER_PLUGIN_DIR . 'includes/class-admin-page.php';
+    }
+    
+    public function add_admin_menu() {
+        add_menu_page(
+            __( 'Mailchimp Builder', 'mailchimp-builder' ),
+            __( 'Mailchimp Builder', 'mailchimp-builder' ),
+            'manage_options',
+            'mailchimp-builder',
+            array( $this, 'admin_page' ),
+            'dashicons-email-alt',
+            30
+        );
+    }
+    
+    public function admin_page() {
+        $admin_page = new Mailchimp_Builder_Admin_Page();
+        $admin_page->render();
+    }
+    
+    public function enqueue_admin_scripts( $hook ) {
+        if ( 'toplevel_page_mailchimp-builder' !== $hook ) {
+            return;
+        }
+        
+        wp_enqueue_script(
+            'mailchimp-builder-admin',
+            MAILCHIMP_BUILDER_PLUGIN_URL . 'assets/js/admin.js',
+            array( 'jquery' ),
+            MAILCHIMP_BUILDER_VERSION,
+            true
+        );
+        
+        wp_enqueue_style(
+            'mailchimp-builder-admin',
+            MAILCHIMP_BUILDER_PLUGIN_URL . 'assets/css/admin.css',
+            array(),
+            MAILCHIMP_BUILDER_VERSION
+        );
+        
+        wp_localize_script( 'mailchimp-builder-admin', 'mailchimp_builder', array(
+            'ajax_url' => admin_url( 'admin-ajax.php' ),
+            'nonce' => wp_create_nonce( 'mailchimp_builder_nonce' ),
+        ) );
+    }
+    
+    public function ajax_generate_newsletter() {
+        check_ajax_referer( 'mailchimp_builder_nonce', 'nonce' );
+        
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( __( 'Unauthorized', 'mailchimp-builder' ) );
+        }
+        
+        $generator = new Mailchimp_Builder_Newsletter_Generator();
+        $newsletter_content = $generator->generate_newsletter();
+        
+        wp_send_json_success( array(
+            'content' => $newsletter_content
+        ) );
+    }
+    
+    public function ajax_send_campaign() {
+        check_ajax_referer( 'mailchimp_builder_nonce', 'nonce' );
+        
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( __( 'Unauthorized', 'mailchimp-builder' ) );
+        }
+        
+        $content = sanitize_textarea_field( $_POST['content'] );
+        $subject = sanitize_text_field( $_POST['subject'] );
+        
+        $api = new Mailchimp_Builder_API();
+        $result = $api->create_and_send_campaign( $subject, $content );
+        
+        if ( $result ) {
+            wp_send_json_success( array(
+                'message' => __( 'Newsletter sent successfully!', 'mailchimp-builder' )
+            ) );
+        } else {
+            wp_send_json_error( array(
+                'message' => __( 'Failed to send newsletter.', 'mailchimp-builder' )
+            ) );
+        }
+    }
+    
+    public function activate() {
+        // Create default options
+        $default_options = array(
+            'mailchimp_api_key' => '',
+            'mailchimp_list_id' => '',
+            'newsletter_template' => 'default',
+            'include_posts' => true,
+            'include_events' => true,
+            'posts_limit' => 5,
+            'events_limit' => 5,
+            'post_excerpt_length' => 150,
+            'events_end_date' => date( 'Y-m-d', strtotime( '+3 months' ) ),
+            'include_featured_images' => true
+        );
+        
+        add_option( 'mailchimp_builder_options', $default_options );
+    }
+}
+
+// Initialize the plugin
+Mailchimp_Builder::get_instance();
