@@ -156,7 +156,7 @@
 
 /* Preview styling */
 .newsletter-preview-content {
-    background: white;
+    background: #f9f9f9;
     padding: 20px;
     border-radius: 4px;
     font-family: Arial, sans-serif;
@@ -165,7 +165,7 @@
 
 .newsletter-preview-content h1,
 .newsletter-preview-content h2 {
-    color: #0073aa;
+    color: #80100f;
 }
 
 .newsletter-preview-content .section {
@@ -178,7 +178,7 @@
 .newsletter-preview-content .item {
     margin-bottom: 15px;
     padding: 10px;
-    background: #f9f9f9;
+    background: #fff;
     border-radius: 3px;
 }
 
@@ -195,7 +195,7 @@
 }
 
 .newsletter-preview-content .event-date {
-    background: #0073aa;
+    background: #80100f;
     color: white;
     padding: 3px 8px;
     border-radius: 3px;
@@ -230,4 +230,85 @@ input[type="date"]:focus {
     height: auto;
     border: 1px solid #ddd;
     border-radius: 4px;
+}
+
+/* Header image upload styling */
+.header-image-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.header-image-preview {
+    min-height: 40px;
+}
+
+.header-image-preview img {
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.header-image-container .button {
+    margin-right: 10px;
+}
+
+/* HTML separator textarea styling */
+textarea.code {
+    font-family: Consolas, Monaco, 'Courier New', monospace;
+    background-color: #f8f9fa;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 10px;
+    line-height: 1.4;
+}
+
+textarea.code:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: 2px solid transparent;
+}
+
+/* Color picker styling */
+input[type="color"] {
+    width: 50px;
+    height: 30px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    padding: 0;
+    cursor: pointer;
+}
+
+input[type="color"]:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: 2px solid transparent;
+}
+
+/* URL input styling */
+input[type="url"] {
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    padding: 3px 8px;
+    background-color: #fff;
+    color: #2c3338;
+}
+
+input[type="url"]:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: 2px solid transparent;
+}
+
+/* Social media section */
+.social-media-section {
+    border-top: 1px solid #e1e1e1;
+    padding-top: 20px;
+    margin-top: 20px;
+}
+
+.social-media-section h3 {
+    margin-top: 0;
+    color: #23282d;
+    font-size: 16px;
 }

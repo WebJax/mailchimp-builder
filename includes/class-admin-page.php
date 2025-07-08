@@ -49,6 +49,27 @@ class Mailchimp_Builder_Admin_Page {
         
         $output['include_featured_images'] = isset( $input['include_featured_images'] );
         
+        // New options
+        if ( isset( $input['separator_html'] ) ) {
+            $output['separator_html'] = wp_kses_post( $input['separator_html'] );
+        }
+        
+        if ( isset( $input['button_background_color'] ) ) {
+            $output['button_background_color'] = sanitize_hex_color( $input['button_background_color'] );
+        }
+        
+        if ( isset( $input['header_image'] ) ) {
+            $output['header_image'] = absint( $input['header_image'] );
+        }
+        
+        if ( isset( $input['facebook_url'] ) ) {
+            $output['facebook_url'] = esc_url_raw( $input['facebook_url'] );
+        }
+        
+        if ( isset( $input['instagram_url'] ) ) {
+            $output['instagram_url'] = esc_url_raw( $input['instagram_url'] );
+        }
+        
         return $output;
     }
     
@@ -217,6 +238,101 @@ class Mailchimp_Builder_Admin_Page {
                                             <?php _e( 'Inkluder udvalgte billeder som headers', 'mailchimp-builder' ); ?>
                                         </label>
                                         <p class="description"><?php _e( 'Vis det udvalgte billede øverst i hvert indlæg/arrangement', 'mailchimp-builder' ); ?></p>
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <th scope="row">
+                                        <label for="separator_html"><?php _e( 'HTML Separator', 'mailchimp-builder' ); ?></label>
+                                    </th>
+                                    <td>
+                                        <textarea id="separator_html" 
+                                                  name="mailchimp_builder_options[separator_html]" 
+                                                  rows="5" 
+                                                  cols="50" 
+                                                  class="large-text code"><?php echo esc_textarea( isset( $options['separator_html'] ) ? $options['separator_html'] : '' ); ?></textarea>
+                                        <p class="description"><?php _e( 'HTML kode der indsættes mellem nyheder og arrangementer', 'mailchimp-builder' ); ?></p>
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <th scope="row">
+                                        <label for="button_background_color"><?php _e( 'Knap Baggrundsfarve', 'mailchimp-builder' ); ?></label>
+                                    </th>
+                                    <td>
+                                        <input type="color" 
+                                               id="button_background_color" 
+                                               name="mailchimp_builder_options[button_background_color]" 
+                                               value="<?php echo esc_attr( isset( $options['button_background_color'] ) ? $options['button_background_color'] : '#007cba' ); ?>" 
+                                               class="small-text" />
+                                        <p class="description"><?php _e( 'Baggrundsfarve for knapper i nyhedsbrevet', 'mailchimp-builder' ); ?></p>
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <th scope="row">
+                                        <label for="header_image"><?php _e( 'Header Billede', 'mailchimp-builder' ); ?></label>
+                                    </th>
+                                    <td>
+                                        <?php 
+                                        $header_image_id = isset( $options['header_image'] ) ? $options['header_image'] : '';
+                                        $header_image_url = $header_image_id ? wp_get_attachment_image_url( $header_image_id, 'medium' ) : '';
+                                        ?>
+                                        <div class="header-image-container">
+                                            <input type="hidden" 
+                                                   id="header_image" 
+                                                   name="mailchimp_builder_options[header_image]" 
+                                                   value="<?php echo esc_attr( $header_image_id ); ?>" />
+                                            <div class="header-image-preview" style="margin-bottom: 10px;">
+                                                <?php if ( $header_image_url ) : ?>
+                                                    <img src="<?php echo esc_url( $header_image_url ); ?>" 
+                                                         alt="Header billede" 
+                                                         style="max-width: 300px; height: auto; border: 1px solid #ddd;" />
+                                                <?php endif; ?>
+                                            </div>
+                                            <button type="button" 
+                                                    id="upload-header-image" 
+                                                    class="button">
+                                                <?php _e( 'Vælg Header Billede', 'mailchimp-builder' ); ?>
+                                            </button>
+                                            <button type="button" 
+                                                    id="remove-header-image" 
+                                                    class="button" 
+                                                    style="<?php echo ! $header_image_id ? 'display: none;' : ''; ?>">
+                                                <?php _e( 'Fjern Billede', 'mailchimp-builder' ); ?>
+                                            </button>
+                                        </div>
+                                        <p class="description"><?php _e( 'Billede der vises øverst i nyhedsbrevet i stedet for tekst', 'mailchimp-builder' ); ?></p>
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <th scope="row">
+                                        <label for="facebook_url"><?php _e( 'Facebook Side URL', 'mailchimp-builder' ); ?></label>
+                                    </th>
+                                    <td>
+                                        <input type="url" 
+                                               id="facebook_url" 
+                                               name="mailchimp_builder_options[facebook_url]" 
+                                               value="<?php echo esc_attr( isset( $options['facebook_url'] ) ? $options['facebook_url'] : '' ); ?>" 
+                                               class="regular-text" 
+                                               placeholder="https://www.facebook.com/dinside" />
+                                        <p class="description"><?php _e( 'Link til din Facebook side', 'mailchimp-builder' ); ?></p>
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <th scope="row">
+                                        <label for="instagram_url"><?php _e( 'Instagram Side URL', 'mailchimp-builder' ); ?></label>
+                                    </th>
+                                    <td>
+                                        <input type="url" 
+                                               id="instagram_url" 
+                                               name="mailchimp_builder_options[instagram_url]" 
+                                               value="<?php echo esc_attr( isset( $options['instagram_url'] ) ? $options['instagram_url'] : '' ); ?>" 
+                                               class="regular-text" 
+                                               placeholder="https://www.instagram.com/dinside" />
+                                        <p class="description"><?php _e( 'Link til din Instagram side', 'mailchimp-builder' ); ?></p>
                                     </td>
                                 </tr>
                             </table>

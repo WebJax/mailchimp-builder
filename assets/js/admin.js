@@ -312,4 +312,50 @@ jQuery(document).ready(function($) {
         }
     });
     
+    // Header image upload functionality
+    var mediaUploader;
+    
+    $('#upload-header-image').on('click', function(e) {
+        e.preventDefault();
+        
+        // If the media uploader already exists, reopen it
+        if (mediaUploader) {
+            mediaUploader.open();
+            return;
+        }
+        
+        // Create the media uploader
+        mediaUploader = wp.media.frames.file_frame = wp.media({
+            title: 'Vælg Header Billede',
+            button: {
+                text: 'Vælg Billede'
+            },
+            multiple: false,
+            library: {
+                type: 'image'
+            }
+        });
+        
+        // When an image is selected
+        mediaUploader.on('select', function() {
+            var attachment = mediaUploader.state().get('selection').first().toJSON();
+            
+            $('#header_image').val(attachment.id);
+            $('.header-image-preview').html('<img src="' + attachment.url + '" alt="Header billede" style="max-width: 300px; height: auto; border: 1px solid #ddd;" />');
+            $('#remove-header-image').show();
+        });
+        
+        // Open the media uploader
+        mediaUploader.open();
+    });
+    
+    // Remove header image
+    $('#remove-header-image').on('click', function(e) {
+        e.preventDefault();
+        
+        $('#header_image').val('');
+        $('.header-image-preview').html('');
+        $(this).hide();
+    });
+    
 });

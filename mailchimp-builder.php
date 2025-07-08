@@ -76,6 +76,9 @@ class Mailchimp_Builder {
             return;
         }
         
+        // Enqueue WordPress media uploader
+        wp_enqueue_media();
+        
         wp_enqueue_script(
             'mailchimp-builder-admin',
             MAILCHIMP_BUILDER_PLUGIN_URL . 'assets/js/admin.js',

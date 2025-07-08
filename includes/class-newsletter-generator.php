@@ -213,21 +213,62 @@ class Mailchimp_Builder_Newsletter_Generator {
                     display: inline-block;
                     margin-top: 10px;
                     padding: 8px 15px;
-                    background-color: #0073aa;
+                    background-color: <?php echo esc_attr( isset( $this->options['button_background_color'] ) ? $this->options['button_background_color'] : '#0073aa' ); ?>;
                     color: white;
                     text-decoration: none;
                     border-radius: 4px;
                     font-size: 14px;
                 }
                 .read-more:hover {
-                    background-color: #005a87;
+                    background-color: <?php echo esc_attr( $this->adjust_color_brightness( isset( $this->options['button_background_color'] ) ? $this->options['button_background_color'] : '#0073aa', -0.2 ) ); ?>;
+                }
+                .header-image {
+                    margin-bottom: 20px;
+                }
+                .header-image img {
+                    max-width: 100%;
+                    height: auto;
+                    border-radius: 8px;
+                }
+                .separator-section {
+                    margin: 40px 0;
+                    text-align: center;
+                    padding: 20px;
+                    background-color: #f9f9f9;
+                    border-radius: 8px;
+                }
+                .social-links {
+                    margin-top: 20px;
+                }
+                .social-links a {
+                    display: inline-block;
+                    margin: 0 10px;
+                    padding: 10px 15px;
+                    background-color: <?php echo esc_attr( isset( $this->options['button_background_color'] ) ? $this->options['button_background_color'] : '#0073aa' ); ?>;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 4px;
+                    font-size: 14px;
+                }
+                .social-links a:hover {
+                    background-color: <?php echo esc_attr( $this->adjust_color_brightness( isset( $this->options['button_background_color'] ) ? $this->options['button_background_color'] : '#0073aa', -0.2 ) ); ?>;
                 }
             </style>
         </head>
         <body>
             <div class="newsletter-container">
                 <div class="header">
-                    <h1><?php echo esc_html( get_bloginfo( 'name' ) ); ?></h1>
+                    <?php 
+                    $header_image_id = isset( $this->options['header_image'] ) ? $this->options['header_image'] : '';
+                    if ( $header_image_id ) {
+                        $header_image_url = wp_get_attachment_image_url( $header_image_id, 'full' );
+                        if ( $header_image_url ) {
+                            echo '<div class="header-image"><img src="' . esc_url( $header_image_url ) . '" alt="' . esc_attr( get_bloginfo( 'name' ) ) . '" /></div>';
+                        }
+                    } else {
+                        echo '<h1>' . esc_html( get_bloginfo( 'name' ) ) . '</h1>';
+                    }
+                    ?>
                     <p>Nyhedsbrev - <?php echo date_i18n( 'F Y' ); ?></p>
                 </div>
                 
@@ -251,6 +292,13 @@ class Mailchimp_Builder_Newsletter_Generator {
                     <?php endforeach; ?>
                 </div>
                 <?php endif; ?>
+                
+                <?php 
+                // Insert separator HTML between posts and events
+                if ( ! empty( $posts ) && ! empty( $events ) && isset( $this->options['separator_html'] ) && ! empty( $this->options['separator_html'] ) ) {
+                    echo '<div class="separator-section">' . wp_kses_post( $this->options['separator_html'] ) . '</div>';
+                }
+                ?>
                 
                 <?php if ( ! empty( $events ) ) : ?>
                 <div class="section">
@@ -287,6 +335,18 @@ class Mailchimp_Builder_Newsletter_Generator {
                 <div class="footer">
                     <p>Dette nyhedsbrev er sendt fra <strong><?php echo esc_html( get_bloginfo( 'name' ) ); ?></strong></p>
                     <p>Besøg vores hjemmeside: <a href="<?php echo esc_url( home_url() ); ?>"><?php echo esc_url( home_url() ); ?></a></p>
+                    
+                    <?php if ( ( isset( $this->options['facebook_url'] ) && ! empty( $this->options['facebook_url'] ) ) || ( isset( $this->options['instagram_url'] ) && ! empty( $this->options['instagram_url'] ) ) ) : ?>
+                    <div class="social-links">
+                        <p>Følg os på sociale medier:</p>
+                        <?php if ( isset( $this->options['facebook_url'] ) && ! empty( $this->options['facebook_url'] ) ) : ?>
+                            <a href="<?php echo esc_url( $this->options['facebook_url'] ); ?>" target="_blank">📘 Facebook</a>
+                        <?php endif; ?>
+                        <?php if ( isset( $this->options['instagram_url'] ) && ! empty( $this->options['instagram_url'] ) ) : ?>
+                            <a href="<?php echo esc_url( $this->options['instagram_url'] ); ?>" target="_blank">📷 Instagram</a>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </body>
@@ -366,5 +426,26 @@ class Mailchimp_Builder_Newsletter_Generator {
             $width,
             is_numeric( $height ) ? $height . 'px' : $height
         );
+    }
+    
+    /**
+     * Adjust color brightness
+     */
+    private function adjust_color_brightness( $hex, $percent ) {
+        // Remove # if present
+        $hex = ltrim( $hex, '#' );
+        
+        // Convert hex to RGB
+        $r = hexdec( substr( $hex, 0, 2 ) );
+        $g = hexdec( substr( $hex, 2, 2 ) );
+        $b = hexdec( substr( $hex, 4, 2 ) );
+        
+        // Adjust brightness
+        $r = max( 0, min( 255, $r + ( $r * $percent ) ) );
+        $g = max( 0, min( 255, $g + ( $g * $percent ) ) );
+        $b = max( 0, min( 255, $b + ( $b * $percent ) ) );
+        
+        // Convert back to hex
+        return sprintf( '#%02x%02x%02x', $r, $g, $b );
     }
 }
