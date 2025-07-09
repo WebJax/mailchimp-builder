@@ -31,10 +31,24 @@ class Mailchimp_Builder_Admin_Page {
         $output['include_posts'] = isset( $input['include_posts'] );
         $output['include_events'] = isset( $input['include_events'] );
         
+        // Handle selected posts
+        if ( isset( $input['selected_posts'] ) && is_array( $input['selected_posts'] ) ) {
+            $output['selected_posts'] = array();
+            foreach ( $input['selected_posts'] as $post_data ) {
+                if ( ! empty( $post_data['id'] ) ) {
+                    $output['selected_posts'][] = array(
+                        'id' => absint( $post_data['id'] )
+                    );
+                }
+            }
+        }
+        
+        // Keep posts_limit for backward compatibility
         if ( isset( $input['posts_limit'] ) ) {
             $output['posts_limit'] = absint( $input['posts_limit'] );
         }
         
+        // Keep events_limit for backward compatibility  
         if ( isset( $input['events_limit'] ) ) {
             $output['events_limit'] = absint( $input['events_limit'] );
         }
@@ -47,11 +61,18 @@ class Mailchimp_Builder_Admin_Page {
             $output['events_end_date'] = sanitize_text_field( $input['events_end_date'] );
         }
         
+        // Recurring events grouping options
+        $output['group_recurring_events'] = isset( $input['group_recurring_events'] );
+        
+        if ( isset( $input['recurring_event_category'] ) ) {
+            $output['recurring_event_category'] = sanitize_text_field( $input['recurring_event_category'] );
+        }
+        
         $output['include_featured_images'] = isset( $input['include_featured_images'] );
         
         // New options
         if ( isset( $input['separator_html'] ) ) {
-            $output['separator_html'] = wp_kses_post( $input['separator_html'] );
+            $output['separator_html'] = $this->sanitize_separator_html( $input['separator_html'] );
         }
         
         if ( isset( $input['button_background_color'] ) ) {
@@ -70,6 +91,19 @@ class Mailchimp_Builder_Admin_Page {
             $output['instagram_url'] = esc_url_raw( $input['instagram_url'] );
         }
         
+        // Sponsor options
+        if ( isset( $input['sponsors'] ) && is_array( $input['sponsors'] ) ) {
+            $output['sponsors'] = array();
+            foreach ( $input['sponsors'] as $sponsor ) {
+                if ( ! empty( $sponsor['id'] ) && ! empty( $sponsor['type'] ) ) {
+                    $output['sponsors'][] = array(
+                        'id' => absint( $sponsor['id'] ),
+                        'type' => sanitize_text_field( $sponsor['type'] )
+                    );
+                }
+            }
+        }
+        
         return $output;
     }
     
@@ -86,10 +120,23 @@ class Mailchimp_Builder_Admin_Page {
         
         // Test API connection if API key is provided
         $api_status = '';
+        $list_info = '';
         if ( ! empty( $options['mailchimp_api_key'] ) ) {
             $api = new Mailchimp_Builder_API();
             if ( $api->test_connection() ) {
                 $api_status = '<span class="api-status success">✓ Forbindelse OK</span>';
+                
+                // Get list information if list ID is provided
+                if ( ! empty( $options['mailchimp_list_id'] ) ) {
+                    $list_data = $api->get_list_info( $options['mailchimp_list_id'] );
+                    if ( $list_data ) {
+                        $member_count = isset( $list_data['stats']['member_count'] ) ? $list_data['stats']['member_count'] : 0;
+                        $list_name = isset( $list_data['name'] ) ? $list_data['name'] : 'Ukendt liste';
+                        $list_info = '<span class="list-info success">✓ Liste: "' . esc_html( $list_name ) . '" (' . number_format( $member_count ) . ' medlemmer)</span>';
+                    } else {
+                        $list_info = '<span class="list-info error">✗ Liste ikke fundet</span>';
+                    }
+                }
             } else {
                 $api_status = '<span class="api-status error">✗ Forbindelse fejlede</span>';
             }
@@ -135,6 +182,7 @@ class Mailchimp_Builder_Admin_Page {
                                                name="mailchimp_builder_options[mailchimp_list_id]" 
                                                value="<?php echo esc_attr( isset( $options['mailchimp_list_id'] ) ? $options['mailchimp_list_id'] : '' ); ?>" 
                                                class="regular-text" />
+                                        <?php echo $list_info; ?>
                                         <p class="description">
                                             <?php _e( 'ID på den liste du vil sende nyhedsbreve til', 'mailchimp-builder' ); ?>
                                         </p>
@@ -167,33 +215,37 @@ class Mailchimp_Builder_Admin_Page {
                                 
                                 <tr>
                                     <th scope="row">
-                                        <label for="posts_limit"><?php _e( 'Antal Indlæg', 'mailchimp-builder' ); ?></label>
+                                        <label for="selected_posts"><?php _e( 'Vælg Indlæg', 'mailchimp-builder' ); ?></label>
                                     </th>
                                     <td>
-                                        <input type="number" 
-                                               id="posts_limit" 
-                                               name="mailchimp_builder_options[posts_limit]" 
-                                               value="<?php echo esc_attr( isset( $options['posts_limit'] ) ? $options['posts_limit'] : 5 ); ?>" 
-                                               min="1" 
-                                               max="20" 
-                                               class="small-text" />
-                                        <p class="description"><?php _e( 'Maksimalt antal indlæg at inkludere', 'mailchimp-builder' ); ?></p>
-                                    </td>
-                                </tr>
-                                
-                                <tr>
-                                    <th scope="row">
-                                        <label for="events_limit"><?php _e( 'Antal Arrangementer', 'mailchimp-builder' ); ?></label>
-                                    </th>
-                                    <td>
-                                        <input type="number" 
-                                               id="events_limit" 
-                                               name="mailchimp_builder_options[events_limit]" 
-                                               value="<?php echo esc_attr( isset( $options['events_limit'] ) ? $options['events_limit'] : 5 ); ?>" 
-                                               min="1" 
-                                               max="20" 
-                                               class="small-text" />
-                                        <p class="description"><?php _e( 'Maksimalt antal arrangementer at inkludere', 'mailchimp-builder' ); ?></p>
+                                        <div id="selected-posts-container">
+                                            <div class="post-search-container">
+                                                <input type="text" 
+                                                       id="post-search-input" 
+                                                       placeholder="<?php _e( 'Søg efter indlæg...', 'mailchimp-builder' ); ?>" 
+                                                       class="regular-text" />
+                                                <div id="post-search-results" class="search-results"></div>
+                                            </div>
+                                            
+                                            <div id="selected-posts-list" class="selected-items-list">
+                                                <?php
+                                                $selected_posts = isset( $options['selected_posts'] ) ? $options['selected_posts'] : array();
+                                                foreach ( $selected_posts as $index => $post_data ) {
+                                                    $post = get_post( $post_data['id'] );
+                                                    if ( $post ) {
+                                                        echo '<div class="selected-item" data-id="' . esc_attr( $post->ID ) . '">';
+                                                        echo '<span class="drag-handle">≡</span>';
+                                                        echo '<span class="item-title">' . esc_html( $post->post_title ) . '</span>';
+                                                        echo '<span class="item-date">(' . get_the_date( 'Y-m-d', $post ) . ')</span>';
+                                                        echo '<button type="button" class="remove-item" data-id="' . esc_attr( $post->ID ) . '">×</button>';
+                                                        echo '<input type="hidden" name="mailchimp_builder_options[selected_posts][' . $index . '][id]" value="' . esc_attr( $post->ID ) . '" />';
+                                                        echo '</div>';
+                                                    }
+                                                }
+                                                ?>
+                                            </div>
+                                        </div>
+                                        <p class="description"><?php _e( 'Søg og vælg specifikke indlæg til nyhedsbrevet. Træk for at omarrangere rækkefølgen.', 'mailchimp-builder' ); ?></p>
                                     </td>
                                 </tr>
                                 
@@ -228,6 +280,49 @@ class Mailchimp_Builder_Admin_Page {
                                 </tr>
                                 
                                 <tr>
+                                    <th scope="row"><?php _e( 'Grupperingsfunktioner', 'mailchimp-builder' ); ?></th>
+                                    <td>
+                                        <label>
+                                            <input type="checkbox" 
+                                                   id="group_recurring_events"
+                                                   name="mailchimp_builder_options[group_recurring_events]" 
+                                                   value="1" 
+                                                   <?php checked( isset( $options['group_recurring_events'] ) ? $options['group_recurring_events'] : false ); ?> />
+                                            <?php _e( 'Gruppér gentagne arrangementer', 'mailchimp-builder' ); ?>
+                                        </label>
+                                        <p class="description"><?php _e( 'Vis gentagne arrangementer kun én gang med alle datoer listet under', 'mailchimp-builder' ); ?></p>
+                                    </td>
+                                </tr>
+                                
+                                <tr id="recurring-category-row" style="<?php echo isset( $options['group_recurring_events'] ) && $options['group_recurring_events'] ? '' : 'display: none;'; ?>">
+                                    <th scope="row">
+                                        <label for="recurring_event_category"><?php _e( 'Gentagende Arrangementskategori', 'mailchimp-builder' ); ?></label>
+                                    </th>
+                                    <td>
+                                        <?php
+                                        $event_categories = get_terms( array(
+                                            'taxonomy' => 'tribe_events_cat',
+                                            'hide_empty' => false,
+                                        ) );
+                                        ?>
+                                        <select id="recurring_event_category" 
+                                                name="mailchimp_builder_options[recurring_event_category]" 
+                                                class="regular-text">
+                                            <option value=""><?php _e( 'Vælg kategori...', 'mailchimp-builder' ); ?></option>
+                                            <?php if ( ! is_wp_error( $event_categories ) && ! empty( $event_categories ) ) : ?>
+                                                <?php foreach ( $event_categories as $category ) : ?>
+                                                    <option value="<?php echo esc_attr( $category->slug ); ?>" 
+                                                            <?php selected( isset( $options['recurring_event_category'] ) ? $options['recurring_event_category'] : '', $category->slug ); ?>>
+                                                        <?php echo esc_html( $category->name ); ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
+                                        </select>
+                                        <p class="description"><?php _e( 'Arrangementer i denne kategori vil blive grupperet hvis de har samme navn', 'mailchimp-builder' ); ?></p>
+                                    </td>
+                                </tr>
+                                
+                                <tr>
                                     <th scope="row"><?php _e( 'Billede Indstillinger', 'mailchimp-builder' ); ?></th>
                                     <td>
                                         <label>
@@ -251,7 +346,7 @@ class Mailchimp_Builder_Admin_Page {
                                                   rows="5" 
                                                   cols="50" 
                                                   class="large-text code"><?php echo esc_textarea( isset( $options['separator_html'] ) ? $options['separator_html'] : '' ); ?></textarea>
-                                        <p class="description"><?php _e( 'HTML kode der indsættes mellem nyheder og arrangementer', 'mailchimp-builder' ); ?></p>
+                                        <p class="description"><?php _e( 'HTML kode der indsættes mellem nyheder og arrangementer. Du kan bruge moderne CSS som display: flex, grid, osv.', 'mailchimp-builder' ); ?></p>
                                     </td>
                                 </tr>
                                 
@@ -335,6 +430,46 @@ class Mailchimp_Builder_Admin_Page {
                                         <p class="description"><?php _e( 'Link til din Instagram side', 'mailchimp-builder' ); ?></p>
                                     </td>
                                 </tr>
+                                
+                                <tr>
+                                    <th scope="row">
+                                        <label><?php _e( 'Sponsorer', 'mailchimp-builder' ); ?></label>
+                                    </th>
+                                    <td>
+                                        <div id="sponsors-section">
+                                            <div class="sponsor-search-container">
+                                                <input type="text" 
+                                                       id="sponsor-search" 
+                                                       placeholder="<?php _e( 'Søg efter butikker eller erhverv...', 'mailchimp-builder' ); ?>" 
+                                                       class="regular-text" />
+                                                <div id="sponsor-search-results" class="sponsor-search-results"></div>
+                                            </div>
+                                            
+                                            <div id="selected-sponsors" class="selected-sponsors">
+                                                <?php 
+                                                $sponsors = isset( $options['sponsors'] ) ? $options['sponsors'] : array();
+                                                if ( ! empty( $sponsors ) ) :
+                                                    foreach ( $sponsors as $index => $sponsor ) :
+                                                        $post = get_post( $sponsor['id'] );
+                                                        if ( $post ) :
+                                                ?>
+                                                <div class="sponsor-item" data-id="<?php echo esc_attr( $sponsor['id'] ); ?>" data-type="<?php echo esc_attr( $sponsor['type'] ); ?>">
+                                                    <input type="hidden" name="mailchimp_builder_options[sponsors][<?php echo $index; ?>][id]" value="<?php echo esc_attr( $sponsor['id'] ); ?>" />
+                                                    <input type="hidden" name="mailchimp_builder_options[sponsors][<?php echo $index; ?>][type]" value="<?php echo esc_attr( $sponsor['type'] ); ?>" />
+                                                    <span class="sponsor-title"><?php echo esc_html( $post->post_title ); ?></span>
+                                                    <span class="sponsor-type">(<?php echo $sponsor['type'] === 'butiksside' ? 'Butik' : 'Erhverv'; ?>)</span>
+                                                    <button type="button" class="remove-sponsor button-link-delete">×</button>
+                                                </div>
+                                                <?php 
+                                                        endif;
+                                                    endforeach;
+                                                endif;
+                                                ?>
+                                            </div>
+                                        </div>
+                                        <p class="description"><?php _e( 'Søg og vælg sponsorer til nyhedsbrevet. Du kan vælge både butikker og erhverv.', 'mailchimp-builder' ); ?></p>
+                                    </td>
+                                </tr>
                             </table>
                             
                             <?php submit_button( __( 'Gem Indstillinger', 'mailchimp-builder' ) ); ?>
@@ -360,6 +495,29 @@ class Mailchimp_Builder_Admin_Page {
                             <button type="button" id="send-newsletter" class="button button-secondary" style="display: none;">
                                 <?php _e( 'Send Nyhedsbrev', 'mailchimp-builder' ); ?>
                             </button>
+                            
+                            <div class="test-email-section" style="display: none; margin-top: 20px; padding: 15px; background-color: #f0f8ff; border: 1px solid #ddd; border-radius: 4px;">
+                                <h4><?php _e( 'Send Test Email', 'mailchimp-builder' ); ?></h4>
+                                <p class="description"><?php _e( 'Send et test-nyhedsbrev til en specifik mailadresse fra din liste for at teste funktionaliteten.', 'mailchimp-builder' ); ?></p>
+                                
+                                <div class="test-email-controls">
+                                    <label for="test-email-select"><?php _e( 'Vælg test-email:', 'mailchimp-builder' ); ?></label>
+                                    <select id="test-email-select" class="regular-text">
+                                        <option value=""><?php _e( 'Indlæser medlemmer...', 'mailchimp-builder' ); ?></option>
+                                    </select>
+                                    
+                                    <div style="margin-top: 10px;">
+                                        <label for="custom-test-email"><?php _e( 'eller indtast email:', 'mailchimp-builder' ); ?></label>
+                                        <input type="email" id="custom-test-email" class="regular-text" placeholder="test@example.com" />
+                                    </div>
+                                    
+                                    <button type="button" id="send-test-email" class="button button-primary" style="margin-top: 10px;">
+                                        <?php _e( 'Send Test Email', 'mailchimp-builder' ); ?>
+                                    </button>
+                                </div>
+                                
+                                <div id="test-email-message" class="notice" style="display: none; margin-top: 10px;"></div>
+                            </div>
                         </div>
                         
                         <div id="newsletter-preview" class="newsletter-preview"></div>
@@ -375,6 +533,12 @@ class Mailchimp_Builder_Admin_Page {
                                 <strong><?php _e( 'API Forbindelse:', 'mailchimp-builder' ); ?></strong>
                                 <?php echo ! empty( $options['mailchimp_api_key'] ) ? $api_status : '<span class="api-status">' . __( 'Ikke konfigureret', 'mailchimp-builder' ) . '</span>'; ?>
                             </li>
+                            <?php if ( ! empty( $list_info ) ) : ?>
+                            <li>
+                                <strong><?php _e( 'Mailchimp Liste:', 'mailchimp-builder' ); ?></strong>
+                                <?php echo $list_info; ?>
+                            </li>
+                            <?php endif; ?>
                             <li>
                                 <strong><?php _e( 'The Events Calendar:', 'mailchimp-builder' ); ?></strong>
                                 <?php echo class_exists( 'Tribe__Events__Main' ) ? '<span class="api-status success">✓ Aktiv</span>' : '<span class="api-status error">✗ Ikke installeret</span>'; ?>
@@ -396,5 +560,63 @@ class Mailchimp_Builder_Admin_Page {
             </div>
         </div>
         <?php
+    }
+
+    /**
+     * Sanitize separator HTML with extended CSS properties allowed
+     *
+     * @param string $html The HTML to sanitize
+     * @return string Sanitized HTML
+     */
+    private function sanitize_separator_html( $html ) {
+        // Allow specific safe HTML tags with style attributes
+        $allowed_tags = array(
+            'div'    => array( 'class' => true, 'id' => true, 'style' => true ),
+            'span'   => array( 'class' => true, 'id' => true, 'style' => true ),
+            'p'      => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h1'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h2'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h3'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h4'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h5'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h6'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'strong' => array( 'class' => true, 'style' => true ),
+            'em'     => array( 'class' => true, 'style' => true ),
+            'b'      => array( 'class' => true, 'style' => true ),
+            'i'      => array( 'class' => true, 'style' => true ),
+            'a'      => array( 'href' => true, 'class' => true, 'id' => true, 'style' => true, 'target' => true ),
+            'img'    => array( 'src' => true, 'alt' => true, 'class' => true, 'id' => true, 'style' => true, 'width' => true, 'height' => true ),
+            'br'     => array(),
+            'hr'     => array( 'class' => true, 'style' => true ),
+            'ul'     => array( 'class' => true, 'style' => true ),
+            'ol'     => array( 'class' => true, 'style' => true ),
+            'li'     => array( 'class' => true, 'style' => true )
+        );
+
+        // Add filter to allow more CSS properties
+        add_filter( 'safe_style_css', array( $this, 'add_safe_css_properties' ) );
+        
+        $sanitized = wp_kses( $html, $allowed_tags );
+        
+        // Remove the filter
+        remove_filter( 'safe_style_css', array( $this, 'add_safe_css_properties' ) );
+
+        return $sanitized;
+    }
+
+    /**
+     * Add additional safe CSS properties
+     */
+    public function add_safe_css_properties( $styles ) {
+        $additional_styles = array(
+            'display', 'position', 'top', 'right', 'bottom', 'left', 'z-index',
+            'flex', 'flex-direction', 'flex-wrap', 'flex-basis', 'flex-grow', 'flex-shrink',
+            'align-items', 'align-content', 'align-self', 'justify-content', 'justify-items', 'justify-self',
+            'gap', 'row-gap', 'column-gap',
+            'grid', 'grid-template', 'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
+            'grid-area', 'grid-column', 'grid-row'
+        );
+        
+        return array_merge( $styles, $additional_styles );
     }
 }

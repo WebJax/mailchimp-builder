@@ -151,4 +151,88 @@ class Mailchimp_Builder_API {
     public function get_campaign_report( $campaign_id ) {
         return $this->make_request( 'reports/' . $campaign_id );
     }
+    
+    /**
+     * Get specific list information
+     */
+    public function get_list_info( $list_id = null ) {
+        $list_id = $list_id ?: $this->list_id;
+        if ( empty( $list_id ) ) {
+            return false;
+        }
+        
+        return $this->make_request( 'lists/' . $list_id );
+    }
+    
+    /**
+     * Get list members
+     */
+    public function get_list_members( $list_id = null, $count = 100 ) {
+        $list_id = $list_id ?: $this->list_id;
+        if ( empty( $list_id ) ) {
+            return false;
+        }
+        
+        $result = $this->make_request( 'lists/' . $list_id . '/members?count=' . $count );
+        return $result ? $result['members'] : array();
+    }
+
+    /**
+     * Send test email to specific member
+     */
+    public function send_test_email( $campaign_id, $test_emails ) {
+        if ( empty( $campaign_id ) || empty( $test_emails ) ) {
+            return false;
+        }
+
+        $test_data = array(
+            'test_emails' => (array) $test_emails,
+            'send_type' => 'html'
+        );
+
+        return $this->make_request( 'campaigns/' . $campaign_id . '/actions/test', 'POST', $test_data );
+    }
+
+    /**
+     * Create test campaign (without sending)
+     */
+    public function create_test_campaign( $subject, $content ) {
+        if ( empty( $this->list_id ) ) {
+            return false;
+        }
+
+        $campaign_data = array(
+            'type' => 'regular',
+            'recipients' => array(
+                'list_id' => $this->list_id
+            ),
+            'settings' => array(
+                'subject_line' => '[TEST] ' . $subject,
+                'title' => '[TEST] ' . $subject . ' - ' . date( 'Y-m-d H:i:s' ),
+                'from_name' => get_bloginfo( 'name' ),
+                'reply_to' => get_option( 'admin_email' ),
+                'auto_footer' => false,
+                'inline_css' => false,
+            )
+        );
+
+        $campaign = $this->make_request( 'campaigns', 'POST', $campaign_data );
+
+        if ( ! $campaign ) {
+            return false;
+        }
+
+        // Set campaign content
+        $content_data = array(
+            'html' => $content
+        );
+
+        $content_result = $this->make_request( 
+            'campaigns/' . $campaign['id'] . '/content', 
+            'PUT', 
+            $content_data 
+        );
+
+        return $content_result ? $campaign['id'] : false;
+    }
 }

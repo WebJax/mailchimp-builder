@@ -18,13 +18,13 @@ class Mailchimp_Builder_Newsletter_Generator {
     /**
      * Generate newsletter content
      */
-    public function generate_newsletter() {
+    public function generate_newsletter( $mark_as_sent = false ) {
         $posts = array();
         $events = array();
         
-        // Get latest posts if enabled
+        // Get selected posts if enabled
         if ( isset( $this->options['include_posts'] ) && $this->options['include_posts'] ) {
-            $posts = $this->get_latest_posts();
+            $posts = $this->get_selected_posts();
         }
         
         // Get upcoming events if enabled and plugin is active
@@ -33,7 +33,20 @@ class Mailchimp_Builder_Newsletter_Generator {
         }
         
         // Generate HTML content
-        return $this->build_newsletter_html( $posts, $events );
+        $content = $this->build_newsletter_html( $posts, $events, $mark_as_sent );
+        
+        return array(
+            'content' => $content,
+            'post_ids' => array_map( function( $post ) { return $post->ID; }, $posts )
+        );
+    }
+    
+    /**
+     * Generate newsletter content and return only HTML (for backward compatibility)
+     */
+    public function generate_newsletter_html( $mark_as_sent = false ) {
+        $result = $this->generate_newsletter( $mark_as_sent );
+        return $result['content'];
     }
     
     /**
@@ -68,8 +81,9 @@ class Mailchimp_Builder_Newsletter_Generator {
             return array();
         }
         
-        $events_limit = isset( $this->options['events_limit'] ) ? intval( $this->options['events_limit'] ) : 5;
         $events_end_date = isset( $this->options['events_end_date'] ) ? $this->options['events_end_date'] : '';
+        $group_recurring_events = isset( $this->options['group_recurring_events'] ) ? $this->options['group_recurring_events'] : false;
+        $recurring_event_category = isset( $this->options['recurring_event_category'] ) ? $this->options['recurring_event_category'] : '';
         
         $meta_query = array(
             array(
@@ -93,20 +107,98 @@ class Mailchimp_Builder_Newsletter_Generator {
         $args = array(
             'post_type' => 'tribe_events',
             'post_status' => 'publish',
-            'posts_per_page' => $events_limit,
+            'posts_per_page' => -1, // Get all events, no limit
             'orderby' => 'meta_value',
             'order' => 'ASC',
             'meta_key' => '_EventStartDate',
             'meta_query' => $meta_query
         );
         
-        return get_posts( $args );
+        $events = get_posts( $args );
+        
+        // Group recurring events if enabled and category is specified
+        if ( $group_recurring_events && ! empty( $recurring_event_category ) ) {
+            return $this->group_recurring_events( $events, $recurring_event_category );
+        }
+        
+        return $events;
     }
     
     /**
+     * Group recurring events by category
+     */
+    private function group_recurring_events( $events, $recurring_category_slug ) {
+        $grouped_events = array();
+        $recurring_events_by_title = array();
+        $regular_events = array();
+        
+        foreach ( $events as $event ) {
+            // Check if event belongs to the recurring category
+            $event_categories = wp_get_post_terms( $event->ID, 'tribe_events_cat', array( 'fields' => 'slugs' ) );
+            
+            if ( in_array( $recurring_category_slug, $event_categories ) ) {
+                // This is a recurring event - group by title
+                $title = $event->post_title;
+                
+                if ( ! isset( $recurring_events_by_title[$title] ) ) {
+                    $recurring_events_by_title[$title] = array(
+                        'main_event' => $event,
+                        'dates' => array()
+                    );
+                }
+                
+                // Add this date to the list
+                $start_date = get_post_meta( $event->ID, '_EventStartDate', true );
+                $recurring_events_by_title[$title]['dates'][] = array(
+                    'event_id' => $event->ID,
+                    'start_date' => $start_date,
+                    'venue_id' => get_post_meta( $event->ID, '_EventVenueID', true )
+                );
+            } else {
+                // Regular event - add as-is
+                $regular_events[] = $event;
+            }
+        }
+        
+        // Convert grouped recurring events back to event objects with additional data
+        foreach ( $recurring_events_by_title as $title => $group_data ) {
+            $main_event = $group_data['main_event'];
+            
+            // Sort dates chronologically
+            usort( $group_data['dates'], function( $a, $b ) {
+                return strtotime( $a['start_date'] ) - strtotime( $b['start_date'] );
+            });
+            
+            // Add custom property to track grouped dates
+            $main_event->grouped_dates = $group_data['dates'];
+            $main_event->is_grouped_recurring = true;
+            
+            $grouped_events[] = $main_event;
+        }
+        
+        // Combine regular events and grouped recurring events
+        $all_events = array_merge( $regular_events, $grouped_events );
+        
+        // Sort all events by the earliest date
+        usort( $all_events, function( $a, $b ) {
+            $date_a = isset( $a->is_grouped_recurring ) && $a->is_grouped_recurring 
+                ? $a->grouped_dates[0]['start_date'] 
+                : get_post_meta( $a->ID, '_EventStartDate', true );
+                
+            $date_b = isset( $b->is_grouped_recurring ) && $b->is_grouped_recurring 
+                ? $b->grouped_dates[0]['start_date'] 
+                : get_post_meta( $b->ID, '_EventStartDate', true );
+                
+            return strtotime( $date_a ) - strtotime( $date_b );
+        });
+        
+        return $all_events;
+    }
+
+    /**
      * Build newsletter HTML
      */
-    private function build_newsletter_html( $posts, $events ) {
+    private function build_newsletter_html( $posts, $events, $mark_as_sent = false ) {
         $excerpt_length = isset( $this->options['post_excerpt_length'] ) ? intval( $this->options['post_excerpt_length'] ) : 150;
         
         ob_start();
@@ -117,69 +209,90 @@ class Mailchimp_Builder_Newsletter_Generator {
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title><?php echo esc_html( get_bloginfo( 'name' ) ); ?> - Nyhedsbrev</title>
+            <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400,600&family=Oswald:wght@700&display=swap" rel="stylesheet">
             <style>
                 body {
-                    font-family: Arial, sans-serif;
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 400;
                     line-height: 1.6;
-                    color: #333;
+                    color: #000000;
                     max-width: 600px;
                     margin: 0 auto;
                     padding: 20px;
                     background-color: #f4f4f4;
+                    text-align: center;
                 }
                 .newsletter-container {
                     background-color: #ffffff;
-                    padding: 30px;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    padding: 0;
+                    margin: 0;
                 }
                 .header {
                     text-align: center;
-                    border-bottom: 3px solid #0073aa;
-                    padding-bottom: 20px;
-                    margin-bottom: 30px;
+                    margin: 0;
+                    padding: 0;
                 }
                 .header h1 {
-                    color: #0073aa;
+                    font-family: 'Oswald', Arial, sans-serif;
+                    font-weight: 700;
+                    color: #000000;
                     margin: 0;
-                    font-size: 28px;
+                    font-size: 36px;
+                    text-align: center;
+                }
+                .header p {
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 400;
+                    color: #000000;
+                    text-align: center;
                 }
                 .section {
                     margin-bottom: 40px;
+                    text-align: center;
                 }
                 .section-title {
-                    color: #0073aa;
-                    font-size: 22px;
-                    border-bottom: 2px solid #e1e1e1;
+                    font-family: 'Oswald', Arial, sans-serif;
+                    font-weight: 700;
+                    color: #000000;
+                    font-size: 36px;
                     padding-bottom: 10px;
                     margin-bottom: 20px;
+                    text-align: center;
                 }
-                .item {
-                    margin-bottom: 25px;
-                    padding: 20px;
-                    border: 1px solid #e1e1e1;
-                    border-radius: 5px;
-                    background-color: #fafafa;
+                .item-content {
+                    padding: 10px 40px;
                 }
                 .item-title {
-                    font-size: 18px;
-                    font-weight: bold;
-                    margin-bottom: 10px;
+                    font-family: 'Oswald', Arial, sans-serif;
+                    font-weight: 700;
+                    font-size: 36px;
+                    line-height: 1.2;
+                    margin-bottom: 15px;
+                    text-align: center;
+                    color: #000000;
                 }
                 .item-title a {
-                    color: #0073aa;
+                    color: #000000;
                     text-decoration: none;
                 }
                 .item-title a:hover {
                     text-decoration: underline;
                 }
                 .item-meta {
-                    color: #666;
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 400;
+                    color: #000000;
                     font-size: 14px;
                     margin-bottom: 10px;
+                    text-align: center;
                 }
                 .item-excerpt {
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 400;
+                    margin-bottom: 20px;
                     line-height: 1.5;
+                    color: #000000;
+                    text-align: center;
                 }
                 .item-image {
                     margin-bottom: 15px;
@@ -188,59 +301,112 @@ class Mailchimp_Builder_Newsletter_Generator {
                 .item-image img {
                     max-width: 100%;
                     height: auto;
-                    border-radius: 4px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                 }
                 .event-date {
-                    background-color: #0073aa;
-                    color: white;
-                    padding: 5px 10px;
-                    border-radius: 3px;
-                    font-size: 12px;
-                    font-weight: bold;
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 600;
+                    color: black;
+                    font-size: 18px;
                     display: inline-block;
                     margin-bottom: 10px;
+                    text-align: center;
+                }
+                .event-dates-list {
+                    text-align: center;
+                    margin-bottom: 15px;
+                }
+                .event-dates-list .event-date {
+                    display: block;
+                    margin-bottom: 5px;
+                    font-size: 16px;
+                    padding: 3px 0;
+                }
+                .event-dates-list .event-date:first-child {
+                    font-weight: 700;
+                    font-size: 18px;
+                    margin-bottom: 8px;
+                    color: #000000;
+                }
+                .event-dates-list .event-date:not(:first-child) {
+                    color: #666666;
+                    font-weight: 500;
                 }
                 .footer {
                     text-align: center;
                     margin-top: 40px;
                     padding-top: 20px;
-                    border-top: 2px solid #e1e1e1;
-                    color: #666;
+                    background-color: <?php echo esc_attr( isset( $this->options['button_background_color'] ) ? $this->options['button_background_color'] : '#0073aa' ); ?>;
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 400;
+                    color: #ffffff;
                     font-size: 14px;
                 }
+                .footer p {
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 400;
+                    color: #ffffff;
+                    text-align: center;
+                }
+                .footer a {
+                    color: #ffffff;
+                    text-decoration: none;
+                }
+                .footer a:hover {
+                    text-decoration: underline;
+                }
                 .read-more {
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 600;
                     display: inline-block;
-                    margin-top: 10px;
-                    padding: 8px 15px;
+                    margin-top: 20px;
+                    padding: 10px 25px;
                     background-color: <?php echo esc_attr( isset( $this->options['button_background_color'] ) ? $this->options['button_background_color'] : '#0073aa' ); ?>;
                     color: white;
                     text-decoration: none;
                     border-radius: 4px;
                     font-size: 14px;
+                    text-align: center;
                 }
                 .read-more:hover {
                     background-color: <?php echo esc_attr( $this->adjust_color_brightness( isset( $this->options['button_background_color'] ) ? $this->options['button_background_color'] : '#0073aa', -0.2 ) ); ?>;
                 }
                 .header-image {
-                    margin-bottom: 20px;
+                    margin-bottom: -7px;
+                    text-align: center;
                 }
                 .header-image img {
                     max-width: 100%;
                     height: auto;
-                    border-radius: 8px;
                 }
                 .separator-section {
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 400;
                     margin: 40px 0;
                     text-align: center;
                     padding: 20px;
                     background-color: #f9f9f9;
                     border-radius: 8px;
+                    color: #000000;
+                }
+                .separator-section p {
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 400;
+                    color: #000000;
+                    text-align: center;
+                }
+                .separator-section h1, .separator-section h2, .separator-section h3, .separator-section h4, .separator-section h5, .separator-section h6 {
+                    font-family: 'Oswald', Arial, sans-serif;
+                    font-weight: 700;
+                    color: #000000;
+                    text-align: center;
                 }
                 .social-links {
                     margin-top: 20px;
+                    text-align: center;
                 }
                 .social-links a {
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 400;
                     display: inline-block;
                     margin: 0 10px;
                     padding: 10px 15px;
@@ -249,9 +415,63 @@ class Mailchimp_Builder_Newsletter_Generator {
                     text-decoration: none;
                     border-radius: 4px;
                     font-size: 14px;
+                    text-align: center;
                 }
                 .social-links a:hover {
                     background-color: <?php echo esc_attr( $this->adjust_color_brightness( isset( $this->options['button_background_color'] ) ? $this->options['button_background_color'] : '#0073aa', -0.2 ) ); ?>;
+                }
+                .sponsors-section {
+                    margin: 40px 0;
+                    text-align: center;
+                    padding-bottom: 40px;
+                    border-bottom: 2px solid #f9f9f9;
+                }
+                .sponsors-container {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    gap: 40px;
+                    flex-wrap: wrap;
+                    margin-top: 20px;
+                }
+                .sponsor-item {
+                    flex: 1;
+                    min-width: 200px;
+                    max-width: 250px;
+                    text-align: center;
+                }
+                .sponsor-logo {
+                    margin-bottom: 10px;
+                }
+                .sponsor-logo img {
+                    max-width: 200px;
+                    max-height: 200px;
+                    width: auto;
+                    height: auto;
+                    object-fit: contain;
+                }
+                .sponsor-name {
+                    font-family: 'Raleway', Arial, sans-serif;
+                    font-weight: 600;
+                    font-size: 14px;
+                    color: #000000;
+                }
+                .sponsor-name a {
+                    color: #000000;
+                    text-decoration: none;
+                }
+                .sponsor-name a:hover {
+                    text-decoration: underline;
+                }
+                @media only screen and (max-width: 600px) {
+                    .sponsors-container {
+                        flex-direction: column;
+                        gap: 20px;
+                    }
+                    .sponsor-item {
+                        min-width: auto;
+                        max-width: none;
+                    }
                 }
             </style>
         </head>
@@ -269,20 +489,15 @@ class Mailchimp_Builder_Newsletter_Generator {
                         echo '<h1>' . esc_html( get_bloginfo( 'name' ) ) . '</h1>';
                     }
                     ?>
-                    <p>Nyhedsbrev - <?php echo date_i18n( 'F Y' ); ?></p>
                 </div>
                 
                 <?php if ( ! empty( $posts ) ) : ?>
                 <div class="section">
-                    <h2 class="section-title">📝 Seneste Indlæg</h2>
                     <?php foreach ( $posts as $post ) : ?>
-                        <div class="item">
-                            <?php echo $this->get_featured_image_html( $post->ID ); ?>
+                        <a href="<?php echo esc_url( get_permalink( $post->ID ) ); ?>"><?php echo $this->get_featured_image_html( $post->ID ); ?></a>
+                        <div class="item-content">
                             <div class="item-title">
-                                <a href="<?php echo esc_url( get_permalink( $post->ID ) ); ?>"><?php echo esc_html( $post->post_title ); ?></a>
-                            </div>
-                            <div class="item-meta">
-                                Udgivet: <?php echo date_i18n( 'j. F Y', strtotime( $post->post_date ) ); ?>
+                                <?php echo esc_html( $post->post_title ); ?>
                             </div>
                             <div class="item-excerpt">
                                 <?php echo esc_html( $this->get_excerpt( $post->post_content, $excerpt_length ) ); ?>
@@ -296,35 +511,103 @@ class Mailchimp_Builder_Newsletter_Generator {
                 <?php 
                 // Insert separator HTML between posts and events
                 if ( ! empty( $posts ) && ! empty( $events ) && isset( $this->options['separator_html'] ) && ! empty( $this->options['separator_html'] ) ) {
-                    echo '<div class="separator-section">' . wp_kses_post( $this->options['separator_html'] ) . '</div>';
+                    echo '<div class="separator-section">' . $this->sanitize_separator_html( $this->options['separator_html'] ) . '</div>';
                 }
                 ?>
                 
-                <?php if ( ! empty( $events ) ) : ?>
-                <div class="section">
-                    <h2 class="section-title">📅 Kommende Arrangementer</h2>
-                    <?php foreach ( $events as $event ) : ?>
-                        <?php
-                        $start_date = get_post_meta( $event->ID, '_EventStartDate', true );
-                        $end_date = get_post_meta( $event->ID, '_EventEndDate', true );
-                        $venue_id = get_post_meta( $event->ID, '_EventVenueID', true );
-                        $venue_name = $venue_id ? get_the_title( $venue_id ) : '';
-                        ?>
-                        <div class="item">
-                            <?php echo $this->get_featured_image_html( $event->ID ); ?>
-                            <div class="event-date">
-                                <?php echo date_i18n( 'j. F Y \k\l. H:i', strtotime( $start_date ) ); ?>
-                            </div>
-                            <div class="item-title">
-                                <a href="<?php echo esc_url( get_permalink( $event->ID ) ); ?>"><?php echo esc_html( $event->post_title ); ?></a>
-                            </div>
-                            <?php if ( $venue_name ) : ?>
-                            <div class="item-meta">
-                                📍 <?php echo esc_html( $venue_name ); ?>
+                <?php 
+                // Sponsors section
+                $sponsors = isset( $this->options['sponsors'] ) ? $this->options['sponsors'] : array();
+                
+                if ( ! empty( $sponsors ) ) :
+                ?>
+                <div class="sponsors-section">
+                    <h2 class="section-title">Nye sponsorer</h2>
+                    <div class="sponsors-container">
+                        <?php foreach ( $sponsors as $sponsor ) : ?>
+                            <?php 
+                            $sponsor_post = get_post( $sponsor['id'] );
+                            if ( $sponsor_post ) :
+                                $sponsor_url = get_permalink( $sponsor_post->ID );
+                                $sponsor_image_id = get_post_meta( $sponsor_post->ID, 'allround-cpt_logo_id', true );
+                                $sponsor_logo_url = wp_get_attachment_url( $sponsor_image_id );
+                            ?>
+                            <div class="sponsor-item">
+                                <?php if ( ! empty( $sponsor_logo_url ) ) : ?>
+                                    <div class="sponsor-logo">
+                                        <a href="<?php echo esc_url( $sponsor_url ); ?>" target="_blank">
+                                            <img src="<?php echo esc_url( $sponsor_logo_url ); ?>" alt="<?php echo esc_attr( $sponsor_post->post_title ); ?> logo" />
+                                        </a>
+                                    </div>
+                                <?php endif; ?>
+                                <div class="sponsor-name">
+                                    <a href="<?php echo esc_url( $sponsor_url ); ?>" target="_blank">
+                                        <?php echo esc_html( $sponsor_post->post_title ); ?>
+                                    </a>
+                                </div>
                             </div>
                             <?php endif; ?>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ( ! empty( $events ) ) : ?>
+                <div class="section">
+                    <h2 class="section-title">Arrangementer</h2>
+                    <?php foreach ( $events as $event ) : ?>
+                        <?php
+                        // Check if this is a grouped recurring event
+                        $is_grouped = isset( $event->is_grouped_recurring ) && $event->is_grouped_recurring;
+                        
+                        if ( $is_grouped ) {
+                            // This is a grouped recurring event - show all dates
+                            $grouped_dates = $event->grouped_dates;
+                            $first_date = $grouped_dates[0];
+                            $venue_id = $first_date['venue_id'];
+                            $venue_name = $venue_id ? get_the_title( $venue_id ) : '';
+                        } else {
+                            // Regular single event
+                            $start_date = get_post_meta( $event->ID, '_EventStartDate', true );
+                            $end_date = get_post_meta( $event->ID, '_EventEndDate', true );
+                            $venue_id = get_post_meta( $event->ID, '_EventVenueID', true );
+                            $venue_name = $venue_id ? get_the_title( $venue_id ) : '';
+                        }
+                        ?>
+                        <a href="<?php echo esc_url( get_permalink( $event->ID ) ); ?>"><?php echo $this->get_featured_image_html( $event->ID ); ?></a>
+                        <div class="item-content">
+                            <div class="item-title">
+                                <?php echo esc_html( $event->post_title ); ?>
+                            </div>
+                            
+                            <?php if ( $is_grouped ) : ?>
+                                <!-- Grouped recurring event dates -->
+                                <div class="event-dates-list">
+                                    <?php foreach ( $grouped_dates as $date_info ) : ?>
+                                        <div class="event-date">
+                                            <?php echo date_i18n( 'j. F Y \k\l. H:i', strtotime( $date_info['start_date'] ) ); ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else : ?>
+                                <!-- Single event date -->
+                                <div class="event-date">
+                                    <?php echo date_i18n( 'j. F Y \k\l. H:i', strtotime( $start_date ) ); ?>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <?php if ( $venue_name ) : ?>
+                                <?php $venue_object = tribe_get_venue_object( $venue_id ); ?>
+                                <div class="item-meta">
+                                    <?php echo esc_html( $venue_name ); ?>
+                                    <?php if ( $venue_object ) : ?>
+                                        <br><?php echo esc_html( $venue_object->address ); ?>
+                                        <br><?php echo $venue_object->zip . ' ' . $venue_object->city; ?>
+                                        <br><br>[<a href="<?php echo esc_url( $venue_object->directions_link ); ?>" target="_blank">📍 Find vej</a>]
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
                             <div class="item-excerpt">
-                                <?php echo esc_html( $this->get_excerpt( $event->post_content, $excerpt_length ) ); ?>
                                 <br><a href="<?php echo esc_url( get_permalink( $event->ID ) ); ?>" class="read-more">Læs mere</a>
                             </div>
                         </div>
@@ -340,10 +623,10 @@ class Mailchimp_Builder_Newsletter_Generator {
                     <div class="social-links">
                         <p>Følg os på sociale medier:</p>
                         <?php if ( isset( $this->options['facebook_url'] ) && ! empty( $this->options['facebook_url'] ) ) : ?>
-                            <a href="<?php echo esc_url( $this->options['facebook_url'] ); ?>" target="_blank">📘 Facebook</a>
+                            <a href="<?php echo esc_url( $this->options['facebook_url'] ); ?>" target="_blank"><img src="<?php echo plugin_dir_url(__FILE__) . '../assets/images/Facebook-ikon.webp'; ?>" width="20" height="20" alt="Facebook ikon"></a>
                         <?php endif; ?>
                         <?php if ( isset( $this->options['instagram_url'] ) && ! empty( $this->options['instagram_url'] ) ) : ?>
-                            <a href="<?php echo esc_url( $this->options['instagram_url'] ); ?>" target="_blank">📷 Instagram</a>
+                            <a href="<?php echo esc_url( $this->options['instagram_url'] ); ?>" target="_blank"><img src="<?php echo plugin_dir_url(__FILE__) . '../assets/images/Instagram-ikon.webp'; ?>" width="20" height="20" alt="Instagram ikon"></a>
                         <?php endif; ?>
                     </div>
                     <?php endif; ?>
@@ -354,11 +637,6 @@ class Mailchimp_Builder_Newsletter_Generator {
         <?php
         
         $content = ob_get_clean();
-        
-        // Mark posts as sent
-        foreach ( $posts as $post ) {
-            update_post_meta( $post->ID, '_mailchimp_newsletter_sent', time() );
-        }
         
         return $content;
     }
@@ -405,26 +683,24 @@ class Mailchimp_Builder_Newsletter_Generator {
             return '';
         }
         
-        // Get image dimensions
-        $image_meta = wp_get_attachment_metadata( $thumbnail_id );
-        $width = isset( $image_meta['width'] ) ? $image_meta['width'] : $max_width;
-        $height = isset( $image_meta['height'] ) ? $image_meta['height'] : 'auto';
+        // Fixed dimensions for consistent cropping
+        $fixed_width = 882;
+        $fixed_height = 463;
         
-        // Calculate responsive width
-        if ( $width > $max_width ) {
-            $ratio = $max_width / $width;
-            $width = $max_width;
-            if ( is_numeric( $height ) ) {
-                $height = round( $height * $ratio );
-            }
-        }
+        // Calculate responsive scaling for email clients
+        $display_width = min( $fixed_width, $max_width );
+        $display_height = round( ( $fixed_height / $fixed_width ) * $display_width );
         
         return sprintf(
-            '<img src="%s" alt="%s" style="width: %spx; height: %s; max-width: 100%%; border-radius: 4px; margin-bottom: 15px; display: block;" />',
+            '<figure style="margin: 0 auto 15px auto; width: %spx; height: %spx; overflow: hidden; display: block;">
+                <img src="%s" alt="%s" style="width: %spx; height: %spx; object-fit: cover; object-position: center; display: block; margin: 0 auto;" />
+            </figure>',
+            $display_width,
+            $display_height,
             esc_url( $image_url ),
             esc_attr( $image_alt ),
-            $width,
-            is_numeric( $height ) ? $height . 'px' : $height
+            $display_width,
+            $display_height
         );
     }
     
@@ -447,5 +723,119 @@ class Mailchimp_Builder_Newsletter_Generator {
         
         // Convert back to hex
         return sprintf( '#%02x%02x%02x', $r, $g, $b );
+    }
+    
+    /**
+     * Sanitize separator HTML with extended CSS properties allowed
+     *
+     * @param string $html The HTML to sanitize
+     * @return string Sanitized HTML
+     */
+    private function sanitize_separator_html( $html ) {
+        // Allow specific safe HTML tags with style attributes
+        $allowed_tags = array(
+            'div'    => array( 'class' => true, 'id' => true, 'style' => true ),
+            'span'   => array( 'class' => true, 'id' => true, 'style' => true ),
+            'p'      => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h1'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h2'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h3'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h4'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h5'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'h6'     => array( 'class' => true, 'id' => true, 'style' => true ),
+            'strong' => array( 'class' => true, 'style' => true ),
+            'em'     => array( 'class' => true, 'style' => true ),
+            'b'      => array( 'class' => true, 'style' => true ),
+            'i'      => array( 'class' => true, 'style' => true ),
+            'a'      => array( 'href' => true, 'class' => true, 'id' => true, 'style' => true, 'target' => true ),
+            'img'    => array( 'src' => true, 'alt' => true, 'class' => true, 'id' => true, 'style' => true, 'width' => true, 'height' => true ),
+            'br'     => array(),
+            'hr'     => array( 'class' => true, 'style' => true ),
+            'ul'     => array( 'class' => true, 'style' => true ),
+            'ol'     => array( 'class' => true, 'style' => true ),
+            'li'     => array( 'class' => true, 'style' => true )
+        );
+
+        // Add filter to allow more CSS properties
+        add_filter( 'safe_style_css', array( $this, 'add_safe_css_properties' ) );
+        
+        $sanitized = wp_kses( $html, $allowed_tags );
+        
+        // Remove the filter
+        remove_filter( 'safe_style_css', array( $this, 'add_safe_css_properties' ) );
+
+        return $sanitized;
+    }
+
+    /**
+     * Add additional safe CSS properties
+     */
+    public function add_safe_css_properties( $styles ) {
+        $additional_styles = array(
+            'display', 'position', 'top', 'right', 'bottom', 'left', 'z-index',
+            'flex', 'flex-direction', 'flex-wrap', 'flex-basis', 'flex-grow', 'flex-shrink',
+            'align-items', 'align-content', 'align-self', 'justify-content', 'justify-items', 'justify-self',
+            'gap', 'row-gap', 'column-gap',
+            'grid', 'grid-template', 'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
+            'grid-area', 'grid-column', 'grid-row'
+        );
+        
+        return array_merge( $styles, $additional_styles );
+    }
+    
+    /**
+     * Mark specific posts as sent
+     */
+    public function mark_posts_as_sent( $post_ids ) {
+        if ( ! is_array( $post_ids ) ) {
+            $post_ids = array( $post_ids );
+        }
+        
+        foreach ( $post_ids as $post_id ) {
+            update_post_meta( $post_id, '_mailchimp_newsletter_sent', time() );
+        }
+    }
+    
+    /**
+     * Get IDs of posts that would be included in newsletter
+     */
+    public function get_newsletter_post_ids() {
+        $post_ids = array();
+        
+        // Get selected posts if enabled
+        if ( isset( $this->options['include_posts'] ) && $this->options['include_posts'] ) {
+            $posts = $this->get_selected_posts();
+            foreach ( $posts as $post ) {
+                $post_ids[] = $post->ID;
+            }
+        }
+        
+        return $post_ids;
+    }
+    
+    /**
+     * Get selected posts based on saved post IDs and their order
+     */
+    private function get_selected_posts() {
+        $selected_posts = isset( $this->options['selected_posts'] ) ? $this->options['selected_posts'] : array();
+        
+        if ( empty( $selected_posts ) ) {
+            // Fallback to latest posts if no posts are selected
+            return $this->get_latest_posts();
+        }
+        
+        $posts = array();
+        
+        // Get posts in the specified order
+        foreach ( $selected_posts as $post_data ) {
+            $post_id = intval( $post_data['id'] );
+            $post = get_post( $post_id );
+            
+            if ( $post && $post->post_status === 'publish' ) {
+                $posts[] = $post;
+            }
+        }
+        
+        return $posts;
     }
 }
