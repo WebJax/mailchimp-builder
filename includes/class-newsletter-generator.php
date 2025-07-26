@@ -226,6 +226,7 @@ class Mailchimp_Builder_Newsletter_Generator {
                     background-color: #ffffff;
                     padding: 0;
                     margin: 0;
+                    width: 100%;
                 }
                 .header {
                     text-align: center;
@@ -297,10 +298,58 @@ class Mailchimp_Builder_Newsletter_Generator {
                 .item-image {
                     margin-bottom: 15px;
                     text-align: center;
+                    width: 100%;
                 }
                 .item-image img {
                     max-width: 100%;
                     height: auto;
+                    width: 100%;
+                }
+                /* Responsive image containers */
+                figure {
+                    margin: 0 auto 15px auto !important;
+                    width: 100% !important;
+                    max-width: 600px !important;
+                    overflow: hidden !important;
+                    display: block !important;
+                }
+                figure img {
+                    width: 100% !important;
+                    height: auto !important;
+                    aspect-ratio: 882/463 !important;
+                    object-fit: cover !important;
+                    object-position: center !important;
+                    display: block !important;
+                    margin: 0 auto !important;
+                }
+                @media only screen and (max-width: 600px) {
+                    body {
+                        padding: 10px;
+                        max-width: 100%;
+                    }
+                    .item-content {
+                        padding: 10px 20px;
+                    }
+                    .item-title {
+                        font-size: 28px;
+                    }
+                    .section-title {
+                        font-size: 28px;
+                    }
+                    .header h1 {
+                        font-size: 28px;
+                    }
+                    figure {
+                        max-width: 100% !important;
+                    }
+                    .sponsors-container {
+                        flex-direction: column;
+                        gap: 20px;
+                    }
+                    .sponsor-item {
+                        min-width: auto;
+                        max-width: none;
+                    }
                 }
                 .event-date {
                     font-family: 'Raleway', Arial, sans-serif;
@@ -462,16 +511,6 @@ class Mailchimp_Builder_Newsletter_Generator {
                 }
                 .sponsor-name a:hover {
                     text-decoration: underline;
-                }
-                @media only screen and (max-width: 600px) {
-                    .sponsors-container {
-                        flex-direction: column;
-                        gap: 20px;
-                    }
-                    .sponsor-item {
-                        min-width: auto;
-                        max-width: none;
-                    }
                 }
             </style>
         </head>
@@ -683,24 +722,14 @@ class Mailchimp_Builder_Newsletter_Generator {
             return '';
         }
         
-        // Fixed dimensions for consistent cropping
-        $fixed_width = 882;
-        $fixed_height = 463;
-        
-        // Calculate responsive scaling for email clients
-        $display_width = min( $fixed_width, $max_width );
-        $display_height = round( ( $fixed_height / $fixed_width ) * $display_width );
-        
+        // Use responsive approach instead of fixed dimensions
         return sprintf(
-            '<figure style="margin: 0 auto 15px auto; width: %spx; height: %spx; overflow: hidden; display: block;">
-                <img src="%s" alt="%s" style="width: %spx; height: %spx; object-fit: cover; object-position: center; display: block; margin: 0 auto;" />
+            '<figure style="margin: 0 auto 15px auto; width: 100%%; max-width: %spx; overflow: hidden; display: block;">
+                <img src="%s" alt="%s" style="width: 100%%; height: auto; aspect-ratio: 882/463; object-fit: cover; object-position: center; display: block; margin: 0 auto;" />
             </figure>',
-            $display_width,
-            $display_height,
+            $max_width,
             esc_url( $image_url ),
-            esc_attr( $image_alt ),
-            $display_width,
-            $display_height
+            esc_attr( $image_alt )
         );
     }
     
