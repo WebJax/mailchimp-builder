@@ -474,6 +474,16 @@ class Mailchimp_Builder_Admin_Page {
                             
                             <?php submit_button( __( 'Gem Indstillinger', 'mailchimp-builder' ) ); ?>
                         </form>
+                        
+                        <?php if ( ! empty( $options['mailchimp_api_key'] ) ) : ?>
+                        <div style="margin-top: 20px; padding: 15px; background: #f1f1f1; border-radius: 4px;">
+                            <h3><?php _e( 'Debug Information', 'mailchimp-builder' ); ?></h3>
+                            <button type="button" id="debug-connection" class="button">
+                                <?php _e( 'Test Forbindelse', 'mailchimp-builder' ); ?>
+                            </button>
+                            <div id="debug-results" style="margin-top: 10px;"></div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     
                     <div class="newsletter-section">
@@ -514,9 +524,14 @@ class Mailchimp_Builder_Admin_Page {
                                     <button type="button" id="send-test-email" class="button button-primary" style="margin-top: 10px;">
                                         <?php _e( 'Send Test Email', 'mailchimp-builder' ); ?>
                                     </button>
+                                    
+                                    <button type="button" id="debug-test-email" class="button" style="margin-top: 10px; margin-left: 10px;">
+                                        <?php _e( 'Debug Test Email', 'mailchimp-builder' ); ?>
+                                    </button>
                                 </div>
                                 
                                 <div id="test-email-message" class="notice" style="display: none; margin-top: 10px;"></div>
+                                <div id="test-email-debug" style="display: none; margin-top: 10px; padding: 10px; background: #f1f1f1; border-radius: 4px;"></div>
                             </div>
                         </div>
                         

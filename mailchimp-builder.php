@@ -41,6 +41,8 @@ class Mailchimp_Builder {
         add_action( 'wp_ajax_mailchimp_search_posts', array( $this, 'ajax_search_posts' ) );
         add_action( 'wp_ajax_mailchimp_get_list_members', array( $this, 'ajax_get_list_members' ) );
         add_action( 'wp_ajax_mailchimp_send_test_email', array( $this, 'ajax_send_test_email' ) );
+        add_action( 'wp_ajax_mailchimp_debug_connection', array( $this, 'ajax_debug_connection' ) );
+        add_action( 'wp_ajax_mailchimp_debug_test_email', array( $this, 'ajax_debug_test_email' ) );
 
         // Register activation hook
         register_activation_hook( __FILE__, array( $this, 'activate' ) );
@@ -147,8 +149,9 @@ class Mailchimp_Builder {
                 'message' => __( 'Newsletter sent successfully!', 'mailchimp-builder' )
             ) );
         } else {
+            $error_message = $api->get_last_error() ?: __( 'Failed to send newsletter.', 'mailchimp-builder' );
             wp_send_json_error( array(
-                'message' => __( 'Failed to send newsletter.', 'mailchimp-builder' )
+                'message' => $error_message
             ) );
         }
     }
@@ -311,33 +314,175 @@ class Mailchimp_Builder {
             ) );
         }
         
+        // Log the test email attempt
+        error_log( 'Mailchimp Test Email: Starting test email to ' . $test_email );
+        
         // Generate newsletter content for test without marking posts as sent
         $generator = new Mailchimp_Builder_Newsletter_Generator();
         $content = $generator->generate_newsletter_html( false );
         
-        $api = new Mailchimp_Builder_API();
-        
-        // Create test campaign
-        $campaign_id = $api->create_test_campaign( $subject, $content );
-        
-        if ( ! $campaign_id ) {
+        if ( empty( $content ) ) {
+            error_log( 'Mailchimp Test Email: Empty newsletter content generated' );
             wp_send_json_error( array(
-                'message' => __( 'Failed to create test campaign.', 'mailchimp-builder' )
+                'message' => __( 'Failed to generate newsletter content for test.', 'mailchimp-builder' )
             ) );
         }
         
+        error_log( 'Mailchimp Test Email: Newsletter content generated, length: ' . strlen( $content ) );
+        
+        $api = new Mailchimp_Builder_API();
+        
+        // Create test campaign
+        error_log( 'Mailchimp Test Email: Creating test campaign with subject: ' . $subject );
+        $campaign_id = $api->create_test_campaign( $subject, $content );
+        
+        if ( ! $campaign_id ) {
+            $error_message = $api->get_last_error() ?: __( 'Failed to create test campaign.', 'mailchimp-builder' );
+            error_log( 'Mailchimp Test Email: Failed to create campaign. Error: ' . $error_message );
+            wp_send_json_error( array(
+                'message' => sprintf( __( 'Campaign creation failed: %s', 'mailchimp-builder' ), $error_message )
+            ) );
+        }
+        
+        error_log( 'Mailchimp Test Email: Test campaign created with ID: ' . $campaign_id );
+        
         // Send test email
+        error_log( 'Mailchimp Test Email: Sending test email to: ' . $test_email );
         $result = $api->send_test_email( $campaign_id, array( $test_email ) );
         
         if ( $result ) {
+            error_log( 'Mailchimp Test Email: Test email sent successfully' );
             wp_send_json_success( array(
                 'message' => sprintf( __( 'Test email sent successfully to %s!', 'mailchimp-builder' ), $test_email )
             ) );
         } else {
+            $error_message = $api->get_last_error() ?: __( 'Unknown error during test email sending.', 'mailchimp-builder' );
+            error_log( 'Mailchimp Test Email: Failed to send test email. Error: ' . $error_message );
             wp_send_json_error( array(
-                'message' => __( 'Failed to send test email.', 'mailchimp-builder' )
+                'message' => sprintf( __( 'Test email sending failed: %s', 'mailchimp-builder' ), $error_message )
             ) );
         }
+    }
+    
+    public function ajax_debug_connection() {
+        check_ajax_referer( 'mailchimp_builder_nonce', 'nonce' );
+        
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( array(
+                'message' => __( 'Insufficient permissions.', 'mailchimp-builder' )
+            ) );
+        }
+        
+        $api = new Mailchimp_Builder_API();
+        $connection_info = $api->get_connection_info();
+        
+        wp_send_json_success( $connection_info );
+    }
+    
+    public function ajax_debug_test_email() {
+        check_ajax_referer( 'mailchimp_builder_nonce', 'nonce' );
+        
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( array(
+                'message' => __( 'Insufficient permissions.', 'mailchimp-builder' )
+            ) );
+        }
+        
+        $test_email = sanitize_email( $_POST['test_email'] );
+        $subject = sanitize_text_field( $_POST['subject'] );
+        
+        if ( empty( $test_email ) || ! is_email( $test_email ) ) {
+            wp_send_json_error( array(
+                'message' => __( 'Please provide a valid email address.', 'mailchimp-builder' )
+            ) );
+        }
+        
+        $debug_info = array();
+        
+        // Step 1: Generate content
+        error_log( 'Debug Test Email: Starting content generation' );
+        $generator = new Mailchimp_Builder_Newsletter_Generator();
+        $content = $generator->generate_newsletter_html( false );
+        $debug_info['content_generated'] = ! empty( $content );
+        $debug_info['content_length'] = strlen( $content );
+        error_log( 'Debug Test Email: Content generated. Length: ' . strlen( $content ) );
+        
+        // Step 2: Test API connection
+        error_log( 'Debug Test Email: Testing API connection' );
+        $api = new Mailchimp_Builder_API();
+        $connection_info = $api->get_connection_info();
+        $debug_info['connection'] = $connection_info;
+        error_log( 'Debug Test Email: Connection info: ' . json_encode( $connection_info ) );
+        
+        // Step 3: Try to create test campaign
+        if ( $connection_info['ping_success'] && $connection_info['list_valid'] ) {
+            error_log( 'Debug Test Email: Creating test campaign' );
+            $campaign_id = $api->create_test_campaign( $subject, $content );
+            $debug_info['campaign_created'] = ! empty( $campaign_id );
+            $debug_info['campaign_id'] = $campaign_id;
+            $debug_info['campaign_error'] = $api->get_last_error();
+            error_log( 'Debug Test Email: Campaign creation result. ID: ' . $campaign_id . ', Error: ' . $api->get_last_error() );
+            
+            // Step 4: Try to send test email if campaign was created
+            if ( $campaign_id ) {
+                // First check if test email is subscribed to the list
+                error_log( 'Debug Test Email: Checking if test email is subscribed to list: ' . $test_email );
+                $subscription_info = $api->check_email_subscription( $test_email );
+                $debug_info['email_subscription'] = $subscription_info;
+                error_log( 'Debug Test Email: Email subscription info: ' . json_encode( $subscription_info ) );
+                
+                error_log( 'Debug Test Email: Attempting to send test email to: ' . $test_email );
+                $result = $api->send_test_email( $campaign_id, array( $test_email ) );
+                $debug_info['test_email_sent'] = (bool) $result;
+                $debug_info['test_email_error'] = $result ? null : $api->get_last_error();
+                $debug_info['test_email_result'] = $result;
+                error_log( 'Debug Test Email: Test email result: ' . json_encode( $result ) . ', Error: ' . ( $result ? 'None' : $api->get_last_error() ) );
+                
+                // Step 5: Get detailed campaign information for debugging
+                $campaign_details = $api->get_campaign_details( $campaign_id );
+                $debug_info['campaign_details'] = $campaign_details;
+                error_log( 'Debug Test Email: Campaign details: ' . json_encode( $campaign_details ) );
+            }
+        } else {
+            error_log( 'Debug Test Email: Connection or list validation failed' );
+        }
+        
+        // Add debug log information
+        $debug_info['debug_log_info'] = $this->get_debug_log_info();
+        
+        wp_send_json_success( $debug_info );
+    }
+    
+    /**
+     * Get WordPress debug log information
+     */
+    public function get_debug_log_info() {
+        $debug_info = array(
+            'wp_debug' => defined( 'WP_DEBUG' ) && WP_DEBUG,
+            'wp_debug_log' => defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG,
+            'wp_debug_display' => defined( 'WP_DEBUG_DISPLAY' ) && WP_DEBUG_DISPLAY,
+            'debug_log_path' => '',
+            'debug_log_exists' => false,
+            'debug_log_writable' => false
+        );
+        
+        // Try to find debug.log location
+        $possible_paths = array(
+            WP_CONTENT_DIR . '/debug.log',
+            ABSPATH . 'debug.log',
+            ini_get( 'error_log' )
+        );
+        
+        foreach ( $possible_paths as $path ) {
+            if ( $path && file_exists( $path ) ) {
+                $debug_info['debug_log_path'] = $path;
+                $debug_info['debug_log_exists'] = true;
+                $debug_info['debug_log_writable'] = is_writable( $path );
+                break;
+            }
+        }
+        
+        return $debug_info;
     }
 }
 

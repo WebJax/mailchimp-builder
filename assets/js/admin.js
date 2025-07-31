@@ -585,6 +585,124 @@ jQuery(document).ready(function($) {
         });
     });
     
+    // Debug test email functionality
+    $('#debug-test-email').on('click', function() {
+        var $btn = $(this);
+        var $debug = $('#test-email-debug');
+        var testEmail = $('#test-email-select').val() || $('#custom-test-email').val();
+        var subject = $('#newsletter-subject').val();
+        
+        if (!testEmail) {
+            showTestMessage('error', 'Vælg venligst en email adresse eller indtast en.');
+            return;
+        }
+        
+        // Show loading state
+        $btn.addClass('loading').prop('disabled', true);
+        $debug.html('<p>Debugging test email process...</p>').show();
+        
+        // Make AJAX request
+        $.ajax({
+            url: mailchimp_builder.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'mailchimp_debug_test_email',
+                nonce: mailchimp_builder.nonce,
+                test_email: testEmail,
+                subject: subject
+            },
+            success: function(response) {
+                if (response.success) {
+                    var debug = response.data;
+                    var html = '<h4>Test Email Debug Information:</h4><ul>';
+                    html += '<li>Content Generated: ' + (debug.content_generated ? '✓' : '✗') + ' (' + debug.content_length + ' chars)</li>';
+                    html += '<li>API Connection: ' + (debug.connection.ping_success ? '✓' : '✗') + '</li>';
+                    html += '<li>List Valid: ' + (debug.connection.list_valid ? '✓' : '✗') + '</li>';
+                    html += '<li>Campaign Created: ' + (debug.campaign_created ? '✓' : '✗');
+                    if (debug.campaign_id) {
+                        html += ' (ID: ' + debug.campaign_id + ')';
+                    }
+                    html += '</li>';
+                    if (debug.campaign_error) {
+                        html += '<li style="color: red;">Campaign Error: ' + debug.campaign_error + '</li>';
+                    }
+                    html += '<li>Test Email Sent: ' + (debug.test_email_sent ? '✓' : '✗') + '</li>';
+                    if (debug.test_email_error) {
+                        html += '<li style="color: red;">Test Email Error: ' + debug.test_email_error + '</li>';
+                    }
+                    
+                    // Show email subscription status
+                    if (debug.email_subscription) {
+                        html += '<li><strong>Email Subscription Status:</strong><ul>';
+                        html += '<li>Email on List: ' + (debug.email_subscription.subscribed ? '✓' : '✗') + '</li>';
+                        if (debug.email_subscription.status) {
+                            html += '<li>Status: ' + debug.email_subscription.status + '</li>';
+                        }
+                        html += '</ul></li>';
+                    }
+                    
+                    if (debug.test_email_result) {
+                        html += '<li>API Response: ' + JSON.stringify(debug.test_email_result) + '</li>';
+                    }
+                    
+                    // Show campaign details if available
+                    if (debug.campaign_details) {
+                        html += '<li><strong>Campaign Details:</strong><ul>';
+                        html += '<li>Status: ' + (debug.campaign_details.status || 'unknown') + '</li>';
+                        html += '<li>Type: ' + (debug.campaign_details.type || 'unknown') + '</li>';
+                        if (debug.campaign_details.recipients) {
+                            html += '<li>Recipients List ID: ' + (debug.campaign_details.recipients.list_id || 'unknown') + '</li>';
+                        }
+                        if (debug.campaign_details.settings) {
+                            html += '<li>Subject: ' + (debug.campaign_details.settings.subject_line || 'unknown') + '</li>';
+                        }
+                        html += '</ul></li>';
+                    }
+                    
+                    // Show connection details
+                    if (debug.connection) {
+                        html += '<li><strong>Connection Details:</strong><ul>';
+                        html += '<li>API Key Set: ' + (debug.connection.api_key_set ? '✓' : '✗') + '</li>';
+                        html += '<li>List ID Set: ' + (debug.connection.list_id_set ? '✓' : '✗') + '</li>';
+                        html += '<li>Server: ' + (debug.connection.server || 'unknown') + '</li>';
+                        if (debug.connection.last_error) {
+                            html += '<li style="color: orange;">Last Connection Error: ' + debug.connection.last_error + '</li>';
+                        }
+                        html += '</ul></li>';
+                    }
+                    
+                    html += '</ul>';
+                    
+                    // Show debug log information
+                    if (debug.debug_log_info) {
+                        html += '<h4>WordPress Debug Settings:</h4><ul>';
+                        html += '<li>WP_DEBUG: ' + (debug.debug_log_info.wp_debug ? '✓' : '✗') + '</li>';
+                        html += '<li>WP_DEBUG_LOG: ' + (debug.debug_log_info.wp_debug_log ? '✓' : '✗') + '</li>';
+                        if (debug.debug_log_info.debug_log_path) {
+                            html += '<li>Debug Log Path: <code>' + debug.debug_log_info.debug_log_path + '</code></li>';
+                            html += '<li>Debug Log Exists: ' + (debug.debug_log_info.debug_log_exists ? '✓' : '✗') + '</li>';
+                            html += '<li>Debug Log Writable: ' + (debug.debug_log_info.debug_log_writable ? '✓' : '✗') + '</li>';
+                        } else {
+                            html += '<li style="color: orange;">Debug log not found. Enable WP_DEBUG_LOG in wp-config.php</li>';
+                        }
+                        html += '</ul>';
+                    }
+                    
+                    html += '<p><strong>Check WordPress debug.log for detailed technical information.</strong></p>';
+                    $debug.html(html);
+                } else {
+                    $debug.html('<p style="color: red;">Debug Error: ' + response.data.message + '</p>');
+                }
+            },
+            error: function() {
+                $debug.html('<p style="color: red;">Debug AJAX error occurred</p>');
+            },
+            complete: function() {
+                $btn.removeClass('loading').prop('disabled', false);
+            }
+        });
+    });
+    
     // Post Selection functionality
     var postSearchTimeout;
     var selectedPosts = [];
@@ -732,6 +850,59 @@ jQuery(document).ready(function($) {
         } else {
             $categoryRow.hide();
         }
+    });
+    
+    // Debug connection functionality
+    $(document).on('click', '#debug-connection', function() {
+        console.log('Debug connection button clicked');
+        var $btn = $(this);
+        var $results = $('#debug-results');
+        
+        $btn.addClass('loading').prop('disabled', true);
+        $results.html('<p>Testing connection...</p>');
+        
+        console.log('Making AJAX request to:', mailchimp_builder.ajax_url);
+        console.log('Nonce:', mailchimp_builder.nonce);
+        
+        $.ajax({
+            url: mailchimp_builder.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'mailchimp_debug_connection',
+                nonce: mailchimp_builder.nonce
+            },
+            success: function(response) {
+                console.log('Success response:', response);
+                if (response.success) {
+                    var info = response.data;
+                    var html = '<h4>Connection Status:</h4><ul>';
+                    html += '<li>API Key Set: ' + (info.api_key_set ? '✓' : '✗') + '</li>';
+                    html += '<li>List ID Set: ' + (info.list_id_set ? '✓' : '✗') + '</li>';
+                    html += '<li>Ping Success: ' + (info.ping_success ? '✓' : '✗') + '</li>';
+                    html += '<li>List Valid: ' + (info.list_valid ? '✓' : '✗') + '</li>';
+                    if (info.server) {
+                        html += '<li>Server: ' + info.server + '</li>';
+                    }
+                    if (info.last_error) {
+                        html += '<li style="color: red;">Last Error: ' + info.last_error + '</li>';
+                    }
+                    if (info.list_info && info.list_info.name) {
+                        html += '<li>List: ' + info.list_info.name + ' (' + info.list_info.stats.member_count + ' members)</li>';
+                    }
+                    html += '</ul>';
+                    $results.html(html);
+                } else {
+                    $results.html('<p style="color: red;">Error: ' + response.data.message + '</p>');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.log('AJAX error:', xhr, status, error);
+                $results.html('<p style="color: red;">AJAX error occurred: ' + error + '</p>');
+            },
+            complete: function() {
+                $btn.removeClass('loading').prop('disabled', false);
+            }
+        });
     });
     
     // ...existing code...
