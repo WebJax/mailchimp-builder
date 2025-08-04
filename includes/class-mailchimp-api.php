@@ -166,9 +166,13 @@ class Mailchimp_Builder_API {
                 'from_name' => get_bloginfo( 'name' ),
                 'reply_to' => get_option( 'admin_email' ),
                 'auto_footer' => false,
-                'inline_css' => false,
+                'inline_css' => true,  // Changed to true to preserve CSS
             )
         );
+        
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            error_log( 'Mailchimp API: Creating campaign with data: ' . json_encode( $campaign_data ) );
+        }
         
         $campaign = $this->make_request( 'campaigns', 'POST', $campaign_data );
         
@@ -184,6 +188,12 @@ class Mailchimp_Builder_API {
             'html' => $content
         );
         
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            error_log( 'Mailchimp API: Setting campaign content for campaign ' . $campaign['id'] );
+            error_log( 'Mailchimp API: Content length: ' . strlen( $content ) . ' characters' );
+            error_log( 'Mailchimp API: Content preview (first 200 chars): ' . substr( $content, 0, 200 ) );
+        }
+        
         $content_result = $this->make_request( 
             'campaigns/' . $campaign['id'] . '/content', 
             'PUT', 
@@ -194,7 +204,14 @@ class Mailchimp_Builder_API {
             if ( ! $this->last_error ) {
                 $this->last_error = 'Failed to set campaign content';
             }
+            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+                error_log( 'Mailchimp API: Failed to set campaign content. Error: ' . $this->last_error );
+            }
             return false;
+        }
+        
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            error_log( 'Mailchimp API: Campaign content set successfully' );
         }
         
         return $campaign['id'];
@@ -204,7 +221,29 @@ class Mailchimp_Builder_API {
      * Send a campaign
      */
     public function send_campaign( $campaign_id ) {
-        return $this->make_request( 'campaigns/' . $campaign_id . '/actions/send', 'POST' );
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            error_log( 'Mailchimp API: Attempting to send campaign ' . $campaign_id );
+            
+            // Get campaign info before sending
+            $campaign_info = $this->make_request( 'campaigns/' . $campaign_id );
+            if ( $campaign_info ) {
+                error_log( 'Mailchimp API: Campaign status before send: ' . ( $campaign_info['status'] ?? 'unknown' ) );
+                error_log( 'Mailchimp API: Campaign type: ' . ( $campaign_info['type'] ?? 'unknown' ) );
+                error_log( 'Mailchimp API: Campaign settings: ' . json_encode( $campaign_info['settings'] ?? array() ) );
+            }
+        }
+        
+        $result = $this->make_request( 'campaigns/' . $campaign_id . '/actions/send', 'POST' );
+        
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            if ( $result ) {
+                error_log( 'Mailchimp API: Campaign sent successfully' );
+            } else {
+                error_log( 'Mailchimp API: Failed to send campaign. Error: ' . $this->last_error );
+            }
+        }
+        
+        return $result;
     }
     
     /**

@@ -129,14 +129,23 @@ class Mailchimp_Builder {
         if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( __( 'Unauthorized', 'mailchimp-builder' ) );
         }
-        
-        $content = sanitize_textarea_field( $_POST['content'] );
+
         $subject = sanitize_text_field( $_POST['subject'] );
         
-        // Get the posts that are currently being sent
+        // Generate fresh newsletter content for the campaign (not from POST data)
         $generator = new Mailchimp_Builder_Newsletter_Generator();
         $newsletter_data = $generator->generate_newsletter( false );
+        $content = $newsletter_data['content']; // Use the full HTML content
         $post_ids = $newsletter_data['post_ids'];
+        
+        if ( empty( $content ) ) {
+            error_log( 'Mailchimp Send Campaign: Empty newsletter content generated' );
+            wp_send_json_error( array(
+                'message' => __( 'Failed to generate newsletter content for campaign.', 'mailchimp-builder' )
+            ) );
+        }
+        
+        error_log( 'Mailchimp Send Campaign: Generated content length: ' . strlen( $content ) );
         
         $api = new Mailchimp_Builder_API();
         $result = $api->create_and_send_campaign( $subject, $content );
