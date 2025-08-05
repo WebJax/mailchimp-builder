@@ -154,6 +154,11 @@ class Mailchimp_Builder_API {
             $this->last_error = 'List ID is missing';
             return false;
         }
+
+        // Get settings from options
+        $options = get_option( 'mailchimp_builder_options', array() );
+        $from_name = isset( $options['from_name'] ) && !empty( $options['from_name'] ) ? $options['from_name'] : get_bloginfo( 'name' );
+        $reply_to = isset( $options['reply_to'] ) && !empty( $options['reply_to'] ) ? $options['reply_to'] : get_option( 'admin_email' );
         
         $campaign_data = array(
             'type' => 'regular',
@@ -163,8 +168,8 @@ class Mailchimp_Builder_API {
             'settings' => array(
                 'subject_line' => $subject,
                 'title' => $subject . ' - ' . date( 'Y-m-d H:i:s' ),
-                'from_name' => get_bloginfo( 'name' ),
-                'reply_to' => get_option( 'admin_email' ),
+                'from_name' => $from_name,
+                'reply_to' => $reply_to,
                 'auto_footer' => false,
                 'inline_css' => true,  // Changed to true to preserve CSS
             )
@@ -422,6 +427,11 @@ class Mailchimp_Builder_API {
             return false;
         }
 
+        // Get settings from options
+        $options = get_option( 'mailchimp_builder_options', array() );
+        $from_name = isset( $options['from_name'] ) && !empty( $options['from_name'] ) ? $options['from_name'] : get_bloginfo( 'name' );
+        $reply_to = isset( $options['reply_to'] ) && !empty( $options['reply_to'] ) ? $options['reply_to'] : get_option( 'admin_email' );
+
         $campaign_data = array(
             'type' => 'regular',
             'recipients' => array(
@@ -430,8 +440,8 @@ class Mailchimp_Builder_API {
             'settings' => array(
                 'subject_line' => '[TEST] ' . $subject,
                 'title' => '[TEST] ' . $subject . ' - ' . date( 'Y-m-d H:i:s' ),
-                'from_name' => get_bloginfo( 'name' ),
-                'reply_to' => get_option( 'admin_email' ),
+                'from_name' => $from_name,
+                'reply_to' => $reply_to,
                 'auto_footer' => false,
                 'inline_css' => false,
             )

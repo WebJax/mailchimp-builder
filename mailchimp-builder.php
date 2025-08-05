@@ -170,6 +170,8 @@ class Mailchimp_Builder {
         $default_options = array(
             'mailchimp_api_key' => '',
             'mailchimp_list_id' => '',
+            'from_name' => get_bloginfo( 'name' ),
+            'reply_to' => get_option( 'admin_email' ),
             'newsletter_template' => 'default',
             'include_posts' => true,
             'include_events' => true,

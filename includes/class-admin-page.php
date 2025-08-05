@@ -28,6 +28,14 @@ class Mailchimp_Builder_Admin_Page {
             $output['mailchimp_list_id'] = sanitize_text_field( $input['mailchimp_list_id'] );
         }
         
+        if ( isset( $input['from_name'] ) ) {
+            $output['from_name'] = sanitize_text_field( $input['from_name'] );
+        }
+        
+        if ( isset( $input['reply_to'] ) ) {
+            $output['reply_to'] = sanitize_email( $input['reply_to'] );
+        }
+        
         $output['include_posts'] = isset( $input['include_posts'] );
         $output['include_events'] = isset( $input['include_events'] );
         
@@ -185,6 +193,38 @@ class Mailchimp_Builder_Admin_Page {
                                         <?php echo $list_info; ?>
                                         <p class="description">
                                             <?php _e( 'ID på den liste du vil sende nyhedsbreve til', 'mailchimp-builder' ); ?>
+                                        </p>
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <th scope="row">
+                                        <label for="from_name"><?php _e( 'Afsender Navn', 'mailchimp-builder' ); ?></label>
+                                    </th>
+                                    <td>
+                                        <input type="text" 
+                                               id="from_name" 
+                                               name="mailchimp_builder_options[from_name]" 
+                                               value="<?php echo esc_attr( isset( $options['from_name'] ) ? $options['from_name'] : get_bloginfo( 'name' ) ); ?>" 
+                                               class="regular-text" />
+                                        <p class="description">
+                                            <?php _e( 'Navnet der vises som afsender af nyhedsbrevet', 'mailchimp-builder' ); ?>
+                                        </p>
+                                    </td>
+                                </tr>
+                                
+                                <tr>
+                                    <th scope="row">
+                                        <label for="reply_to"><?php _e( 'Svar-til Email', 'mailchimp-builder' ); ?></label>
+                                    </th>
+                                    <td>
+                                        <input type="email" 
+                                               id="reply_to" 
+                                               name="mailchimp_builder_options[reply_to]" 
+                                               value="<?php echo esc_attr( isset( $options['reply_to'] ) ? $options['reply_to'] : get_option( 'admin_email' ) ); ?>" 
+                                               class="regular-text" />
+                                        <p class="description">
+                                            <?php _e( 'Email adresse som modtagere kan svare til. Denne adresse skal være verificeret i Mailchimp.', 'mailchimp-builder' ); ?>
                                         </p>
                                     </td>
                                 </tr>
